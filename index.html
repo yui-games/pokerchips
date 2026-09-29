@@ -98,6 +98,24 @@
   #cardGrid button.red{color:#c0392b;}
   #cardGrid button:disabled{opacity:.18;}
   .suitLbl{font-size:16px;font-weight:900;align-self:center;}
+  /* 🎯勝率モーダル（スマホ・プレイヤー用） */
+  .eqBox{width:100%;max-width:460px;padding:12px;}
+  .eqRow{display:flex;align-items:center;gap:6px;margin-top:8px;}
+  .eqRow .who{width:40px;font-size:13px;font-weight:bold;flex:none;}
+  .eqRow .slot{width:44px;height:58px;font-size:16px;flex:none;}
+  .eqOpp{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:15px;flex-wrap:wrap;}
+  .eqOpp button{width:44px;height:44px;padding:0;font-size:22px;flex:none;}
+  .eqOpp .n{font-size:20px;font-weight:900;color:var(--gold);min-width:44px;text-align:center;}
+  #eqRes{margin-top:10px;background:rgba(4,20,12,.75);border:2px solid var(--line);border-radius:14px;padding:8px 12px;min-height:148px;}
+  #eqRes .big{font-size:36px;font-weight:900;color:var(--gold);line-height:1.15;}
+  #eqRes .big.run{opacity:.55;}
+  #eqRes .sub{font-size:15px;margin-top:2px;}
+  #eqRes .tag{display:inline-block;font-weight:900;border-radius:99px;padding:1px 10px;background:rgba(255,255,255,.12);}
+  #eqRes .msg{font-size:15px;line-height:1.6;}
+  .eqGrid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:5px;}
+  .eqGrid button{padding:0;height:42px;font-size:16px;border-radius:8px;background:#fff;color:#111;box-shadow:none;font-weight:900;min-width:0;}
+  .eqGrid button.red{color:#c0392b;}
+  .eqGrid button:disabled{opacity:.18;}
 
   /* ---------- ディーラー画面（進行係・スマホ） ---------- */
   #dWrap{max-width:560px;margin:0 auto;}
@@ -192,12 +210,15 @@
 <div id="phone" style="display:none;">
   <div id="pWrap">
     <div style="display:flex;align-items:center;gap:8px;">
-      <b id="pName" style="font-size:18px;"></b>
-      <div id="conn2" style="width:9px;height:9px;border-radius:50%;background:#3ddc84;"></div>
+      <b id="pName" style="font-size:18px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></b>
+      <div id="conn2" style="width:9px;height:9px;border-radius:50%;background:#3ddc84;flex:none;"></div>
       <span style="flex:1"></span>
-      <span class="hint" id="pCode"></span>
-      <button class="ghost" style="padding:6px 12px;font-size:13px;" onclick="openM('mCheat')">📖 早見表</button>
-      <button class="ghost" style="padding:6px 12px;font-size:13px;" onclick="leaveAll()">退出</button>
+      <span class="hint" id="pCode" style="white-space:nowrap;"></span>
+      <button class="ghost" style="padding:6px 12px;font-size:13px;flex:none;" onclick="leaveAll()">退出</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button class="ghost" style="flex:1;padding:9px 8px;font-size:14px;" onclick="openM('mCheat')">📖 早見表</button>
+      <button class="ghost" style="flex:1;padding:9px 8px;font-size:14px;" onclick="openEq()">🎯 勝率</button>
     </div>
     <div id="pStack"><div class="lbl">あなたのチップ</div><div class="v"><img class="chip36" src="assets/chip_blue.png" alt="" onerror="this.style.display='none'"><span id="pStackV">0</span></div></div>
     <div id="pInfo"></div>
@@ -290,6 +311,21 @@
   </div>
   <img src="assets/cheatsheet.webp" alt="ポーカーの役（強い順）とターンごとのアクションの早見表" loading="lazy" style="display:block;width:100%;height:auto;border-radius:10px;background:#fff;">
   <div class="hint" style="margin-top:6px;">役が同じときは、より強いカードの組み合わせで勝負。迷ったらコールかフォールド。</div>
+</div></div>
+
+<!-- 🎯勝率（スマホ・プレイヤー用）。入力したカードはこのスマホの中だけで使う（サーバーにも他の人にも送らない・保存もしない） -->
+<div class="modal" id="mEq" onclick="if(event.target===this)closeM('mEq')"><div class="mbox eqBox">
+  <div style="display:flex;align-items:center;gap:6px;">
+    <b style="font-size:17px;color:var(--gold);">🎯 いまの勝率</b><span style="flex:1"></span>
+    <button class="ghost" style="padding:8px 12px;font-size:14px;" onclick="eqClear()">クリア</button>
+    <button class="ghost" style="padding:8px 12px;font-size:14px;" onclick="closeM('mEq')">閉じる</button>
+  </div>
+  <div class="hint" style="margin-top:6px;">🔒 入力したカードはこのスマホの中だけで使います（ほかの人やサーバーには送りません）。新しいハンドになると自動で消えます。</div>
+  <div id="eqSlots"></div>
+  <div class="eqOpp" id="eqOpp"></div>
+  <div id="eqRes"></div>
+  <div class="hint" style="margin-top:8px;">スロットの順に埋まります。入れたカードをもう一度タップすると外せます。</div>
+  <div id="eqGrid"></div>
 </div></div>
 
 <div id="toast"></div>
@@ -582,6 +618,7 @@ function sendJudge(){
 function renderPhone(V){
   if(ST.you<0)return;
   var me=V.players[ST.you];if(!me)return;
+  eqSync(V);
   $('pName').textContent=me.name;
   $('pStackV').textContent=yen(me.stack);
   var totalPot=V.pot+V.players.reduce(function(s,p){return s+p.bet;},0);
@@ -668,6 +705,200 @@ function openRaise(){
 function sendRaise(){
   closeM('mRaise');
   send({type:'raise',to:Math.floor(+$('raiseTo').value||0)});
+}
+
+/* ---------- 🎯勝率（スマホ・プレイヤー用） ----------
+   自分の手札2枚＋場のカード（0/3/4/5枚）から、残りの山で相手の手札と足りない場のカードを
+   何千回もランダムに配って（モンテカルロ）勝率の目安を出す。すべてこのスマホの中だけで計算し、
+   カードはサーバーにも送らず保存もしない（メモリのみ。ハンド番号が変わったら消す）。
+   役の判定は poker_core.js（score5/cmpScore/best7/handName）をそのまま使う。
+   ※index.html と poker_core.js は同じ名前の関数（createTable等）があるので script タグでは読まず、
+     fetch して関数の中に閉じ込めて必要な関数だけ取り出す（他の画面には影響しない）。 */
+/* ===== EQ_ENGINE_BEGIN（勝率計算。役判定は poker_core.js の score5/cmpScore/best7 をそのまま使う） ===== */
+/* 5〜7枚から最強の役（best7は7枚専用なので、場が3・4枚のとき用に5・6枚も扱う） */
+function eqBestN(C,cards){
+  if(cards.length>=7)return C.best7(cards);
+  if(cards.length===5)return C.score5(cards);
+  var best=null;
+  for(var i=0;i<cards.length;i++){
+    var s=C.score5(cards.filter(function(_,j){return j!==i;}));
+    if(!best||C.cmpScore(s,best)>0)best=s;
+  }
+  return best;
+}
+/* 残りの山（手札・場に出ているカードを除いた札） */
+function eqDeck(known){
+  var used={},d=[];
+  known.forEach(function(c){used[c.r*4+c.s]=1;});
+  for(var r=2;r<=14;r++)for(var s=0;s<4;s++)if(!used[r*4+s])d.push({r:r,s:s});
+  return d;
+}
+/* モンテカルロを iters 回（acc に足し込む）。相手の手札2枚×opp人と、足りない場のカードをランダムに配る。
+   引き分けは等分（2人で分けたら0.5勝）。acc={n:回数, eq:勝ち数(分け含む), tie:引き分けになった回数} */
+function eqRun(C,hole,board,opp,iters,acc,deck,rnd){
+  acc=acc||{n:0,eq:0,tie:0};
+  deck=deck||eqDeck(hole.concat(board));
+  rnd=rnd||Math.random;
+  var needB=5-board.length, need=needB+2*opp, L=deck.length;
+  var fixedMe=(needB===0)?C.best7(hole.concat(board)):null;
+  for(var it=0;it<iters;it++){
+    for(var k=0;k<need;k++){ var j=k+Math.floor(rnd()*(L-k)); var t=deck[k];deck[k]=deck[j];deck[j]=t; }
+    var b=board.slice(); for(var q=0;q<needB;q++)b.push(deck[q]);
+    var me=fixedMe||C.best7(hole.concat(b));
+    var lose=false,ties=0;
+    for(var o=0;o<opp;o++){
+      var sc=C.best7([deck[needB+2*o],deck[needB+2*o+1]].concat(b));
+      var cmp=C.cmpScore(sc,me);
+      if(cmp>0){lose=true;break;}
+      if(cmp===0)ties++;
+    }
+    acc.n++;
+    if(!lose){ if(ties){acc.eq+=1/(ties+1);acc.tie++;} else acc.eq+=1; }
+  }
+  return acc;
+}
+/* 相手の人数に応じた試行回数（人数が多いほど1回が重いので少なめ。それでも誤差はおおむね±1%） */
+function eqIters(opp){ return opp<=1?8000:opp<=2?6000:opp<=4?5000:4000; }
+/* 目安の一言：均等に分けたときの割合 1/(相手+1) と比べる */
+function eqLabel(eq,opp){
+  var fair=1/(opp+1), r=eq/fair;
+  if(r>=1.6)return {t:'かなり強い',c:'#7dffb0'};
+  if(r>=1.15)return {t:'強め',c:'#bdf0d0'};
+  if(r>=0.85)return {t:'ふつう',c:'#f2f7f2'};
+  if(r>=0.55)return {t:'弱め',c:'#ffd27a'};
+  return {t:'かなり弱い',c:'#ff9b9b'};
+}
+/* ===== EQ_ENGINE_END ===== */
+
+var EQC=null,EQC_P=null;   /* poker_core.js の役判定関数（読み込みは1回だけ） */
+function eqCore(){
+  if(EQC)return Promise.resolve(EQC);
+  if(!EQC_P)EQC_P=fetch('poker_core.js').then(function(r){if(!r.ok)throw new Error('load');return r.text();})
+    .then(function(t){EQC=new Function(t+'\n;return {score5:score5,cmpScore:cmpScore,best7:best7,handName:handName};')();return EQC;})
+    .catch(function(e){EQC_P=null;throw e;});
+  return EQC_P;
+}
+var EQ_LBL=['1枚目','2枚目','フロップ','フロップ','フロップ','ターン','リバー'];
+var EQ={slots:[null,null,null,null,null,null,null],sel:0,hand:-1,oppManual:null,lastAuto:-1,run:0,res:null,err:false};
+function eqIsOpen(){return $('mEq').classList.contains('open');}
+/* 相手の人数（自動）：ハンド中＝フォールドしていない参加者−自分／ハンド外＝着席中（チップあり）−自分 */
+function eqAutoOpp(V){
+  if(!V)return 1;
+  var me=ST.you,n;
+  if(V.phase!=='idle')n=V.players.filter(function(p,i){return i!==me&&p.inHand&&!p.folded;}).length;
+  else n=V.players.filter(function(p,i){return i!==me&&!p.out&&p.stack>0;}).length;
+  return Math.max(1,Math.min(7,n));
+}
+function eqOpp(){return EQ.oppManual!=null?EQ.oppManual:eqAutoOpp(ST.view);}
+function eqReset(){
+  EQ.slots=[null,null,null,null,null,null,null];EQ.sel=0;EQ.oppManual=null;EQ.run++;EQ.res=null;EQ.err=false;
+  EQ.lastAuto=eqAutoOpp(ST.view);
+  if(eqIsOpen())eqRender();
+}
+/* ポーリングごと：ハンド番号が変わったら入力を消す／自動の相手人数が変わったら計算し直す */
+function eqSync(V){
+  if(EQ.hand!==V.handNo){
+    var had=EQ.slots.some(Boolean);
+    EQ.hand=V.handNo;eqReset();
+    if(had&&eqIsOpen())toast('新しいハンドなので、勝率の入力を消しました',2000);
+    return;
+  }
+  var a=eqAutoOpp(V);
+  if(a!==EQ.lastAuto){EQ.lastAuto=a;if(EQ.oppManual==null&&eqIsOpen()){eqRenderOpp();eqStart();}}
+}
+function openEq(){
+  eqCore().catch(function(){});
+  eqRender();openM('mEq');
+  if(!EQ.res||EQ.res.opp!==eqOpp())eqStart();
+}
+function eqClear(){eqReset();eqRender();}
+function eqTapSlot(i){
+  if(EQ.slots[i]){EQ.slots[i]=null;eqStart();}
+  EQ.sel=i;eqRender();
+}
+function eqTapCard(r,s){
+  var i=EQ.sel;
+  if(i<0||i>=7||EQ.slots[i])i=EQ.slots.findIndex(function(c){return !c;});
+  if(i<0){toast('スロットがいっぱいです。外したいカードをタップしてください',2000);return;}
+  EQ.slots[i]={r:r,s:s};
+  EQ.sel=EQ.slots.findIndex(function(c){return !c;});
+  eqRender();eqStart();
+}
+function eqOppAdj(d){EQ.oppManual=Math.max(1,Math.min(7,eqOpp()+d));eqRenderOpp();eqStart();}
+function eqOppAuto(){EQ.oppManual=null;eqRenderOpp();eqStart();}
+function eqCardHtml(c){return '<span>'+SUITS[c.s]+'</span><span>'+RJ[c.r]+'</span>';}
+function eqRender(){
+  var h='';
+  [['手札',0,2],['場',2,7]].forEach(function(row){
+    h+='<div class="eqRow"><div class="who">'+row[0]+'</div>';
+    for(var i=row[1];i<row[2];i++){
+      var c=EQ.slots[i];
+      h+='<div class="slot'+(i===EQ.sel?' sel':'')+(c?' filled'+(SUIT_RED[c.s]?' red':''):'')+'" onclick="eqTapSlot('+i+')">'
+        +(c?eqCardHtml(c):'<span style="font-size:9.5px;color:#7fae92;">'+EQ_LBL[i]+'</span>')+'</div>';
+    }
+    h+='</div>';
+  });
+  $('eqSlots').innerHTML=h;
+  var used={};EQ.slots.forEach(function(c){if(c)used[c.r+'-'+c.s]=1;});
+  var g='';
+  for(var s=0;s<4;s++){
+    g+='<div class="eqGrid">';
+    for(var ri=0;ri<13;ri++){
+      var r=RANKS[ri];
+      g+='<button class="'+(SUIT_RED[s]?'red':'')+'"'+(used[r+'-'+s]?' disabled':'')+' onclick="eqTapCard('+r+','+s+')">'+SUITS[s]+RJ[r]+'</button>';
+    }
+    g+='</div>';
+  }
+  $('eqGrid').innerHTML=g;
+  eqRenderOpp();eqShowRes();
+}
+function eqRenderOpp(){
+  var man=EQ.oppManual!=null;
+  $('eqOpp').innerHTML='<span>相手</span><button class="ghost" onclick="eqOppAdj(-1)"'+(eqOpp()<=1?' disabled':'')+'>−</button>'
+    +'<span class="n">'+eqOpp()+'人</span><button class="ghost" onclick="eqOppAdj(1)"'+(eqOpp()>=7?' disabled':'')+'>＋</button>'
+    +(man?'<button class="ghost" style="width:auto;padding:0 12px;font-size:13px;" onclick="eqOppAuto()">自動に戻す</button>'
+         :'<span class="hint">（卓の状態から自動）</span>');
+}
+function eqShowRes(){
+  var box=$('eqRes');if(!box)return;
+  var hole=EQ.slots.slice(0,2).filter(Boolean),bn=EQ.slots.slice(2).filter(Boolean).length;
+  if(hole.length<2){box.innerHTML='<div class="msg">まず「手札」に、自分のカードを<b>2枚</b>えらんでください。<br>場にカードが出たら「場」にも入れると、そのときの勝率が出ます。</div>';return;}
+  if(bn===1||bn===2){box.innerHTML='<div class="msg">場のカードは <b>0枚・3枚・4枚・5枚</b> のときに計算します（いま'+bn+'枚）。</div>';return;}
+  if(EQ.err){box.innerHTML='<div class="msg">計算の準備ができませんでした。通信を確かめて、もう一度ひらいてください。</div>';return;}
+  var R=EQ.res;
+  if(!R||!R.acc.n){box.innerHTML='<div class="big run">勝率 計算中…</div>';return;}
+  var eq=R.acc.eq/R.acc.n,tie=R.acc.tie/R.acc.n,lb=eqLabel(eq,R.opp),fair=Math.round(100/(R.opp+1));
+  var h='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span class="big'+(R.done?'':' run')+'">勝率 約'+Math.round(eq*100)+'%</span>'
+    +'<span class="tag" style="color:'+lb.c+';font-size:16px;">'+lb.t+'</span></div>'
+    +'<div class="sub">引き分け 約'+Math.round(tie*100)+'%　<span class="hint">（相手'+R.opp+'人なら、平均は約'+fair+'%）</span></div>';
+  if(R.cur)h+='<div class="sub">いまの役：<b>'+esc(R.cur)+'</b></div>';
+  h+='<div class="hint" style="margin-top:4px;">'+(R.done?'':'計算中…（'+yen(R.acc.n)+'回）')
+    +'相手'+R.opp+'人の手札と残りのカードを何千回もためしに配ってみた結果の目安です（相手が最後まで降りない場合）。</div>';
+  box.innerHTML=h;
+}
+/* 計算：数ミリ秒ずつ小分けにして、画面が固まらないようにする。入力が変わったら前の計算は捨てる */
+function eqStart(){
+  var id=++EQ.run;EQ.res=null;EQ.err=false;
+  var hole=EQ.slots.slice(0,2).filter(Boolean),board=EQ.slots.slice(2).filter(Boolean);
+  if(hole.length<2||board.length===1||board.length===2){eqShowRes();return;}
+  eqShowRes();
+  eqCore().then(function(C){
+    if(id!==EQ.run)return;
+    var opp=eqOpp(),total=eqIters(opp),deck=eqDeck(hole.concat(board)),acc={n:0,eq:0,tie:0};
+    var cur=board.length>=3?C.handName(eqBestN(C,hole.concat(board))):'';
+    var tStart=Date.now();
+    function step(){
+      if(id!==EQ.run)return;
+      var t0=Date.now();
+      while(acc.n<total&&Date.now()-t0<12)eqRun(C,hole,board,opp,Math.min(50,total-acc.n),acc,deck);
+      /* 古いスマホで時間がかかりすぎるときは、3,000回以上ためしたら8秒で打ち切る（誤差は±2%程度） */
+      if(acc.n>=3000&&Date.now()-tStart>8000)total=acc.n;
+      EQ.res={acc:acc,total:total,opp:opp,cur:cur,done:acc.n>=total};
+      eqShowRes();
+      if(!EQ.res.done)setTimeout(step,0);
+    }
+    step();
+  }).catch(function(){if(id===EQ.run){EQ.err=true;eqShowRes();}});
 }
 
 /* ---------- 起動 ---------- */
