@@ -38,6 +38,18 @@
   #potBox{text-align:center;margin:6px 0 12px;}
   #potBox .lbl{font-size:14px;color:var(--dim);}
   #potBox .pot{font-size:52px;font-weight:900;color:var(--gold);text-shadow:0 2px 8px rgba(0,0,0,.5);line-height:1.1;}
+  #tBlindBar{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;margin:0 0 6px;}
+  #tBlindBar .bInfo{background:rgba(4,20,12,.8);border:2px solid var(--line);border-radius:14px;padding:6px 14px;font-size:18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center;}
+  #tBlindBar .bInfo.soon{border-color:#f2554b;box-shadow:0 0 14px rgba(242,85,75,.5);}
+  #tBlindBar .lv{color:var(--gold);font-weight:bold;}
+  #tBlindBar .bTimer{font-size:30px;font-weight:900;font-variant-numeric:tabular-nums;color:#fff;}
+  #tBlindBar .pend{color:#ffd27a;font-size:15px;}
+  #tBlindBar button{padding:6px 12px;font-size:14px;}
+  .bMin{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0;}
+  .bMin button.sel{background:var(--gold);color:#1b1205;}
+  .bTbl{width:100%;border-collapse:collapse;font-size:14px;margin-top:8px;}
+  .bTbl td,.bTbl th{border-bottom:1px solid var(--line);padding:4px 6px;text-align:right;}
+  .bTbl th{color:var(--dim);font-weight:normal;}
   #stTxt{text-align:center;font-size:18px;min-height:26px;margin-bottom:8px;color:#cfe9d8;}
   #plGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;}
   .pl{background:rgba(4,20,12,.8);border:2px solid var(--line);border-radius:14px;padding:10px 12px;position:relative;}
@@ -198,6 +210,7 @@
     <span class="hint" id="tBlinds"></span>
     <button class="ghost" onclick="leaveAll()">終了</button>
   </div>
+  <div id="tBlindBar"></div>
   <div id="potBox"><div class="lbl">ポット</div><div class="pot"><img class="chip36" src="assets/chip_red.png" alt="" onerror="this.style.display='none'"><span id="tPot">0</span></div></div>
   <div id="stTxt"></div>
   <div id="resultBox"></div>
@@ -304,6 +317,18 @@
 </div></div>
 
 <!-- 初心者向け早見表（役の強さ・アクション）。画像は assets/cheatsheet.webp -->
+<div class="modal" id="mBlind" onclick="if(event.target===this)closeM('mBlind')"><div class="mbox" style="max-width:520px;">
+  <h3>⏱ ブラインド自動アップ</h3>
+  <div class="hint">決めた時間ごとにブラインド（SB/BB）が自動で上がります。いまの額から始まり、上がった額は<b>次のハンドから</b>使われます。</div>
+  <div class="bMin" id="bMinBtns"></div>
+  <div class="bMin">そのほか：<input id="bMinIn" type="number" min="1" max="120" style="width:80px;" oninput="bSetMin(this.value)"> 分ごと</div>
+  <table class="bTbl" id="bPrev"></table>
+  <div style="display:flex;gap:10px;justify-content:center;margin-top:12px;">
+    <button class="gold" onclick="bStart()">この設定で開始</button>
+    <button class="ghost" onclick="closeM('mBlind')">やめる</button>
+  </div>
+</div></div>
+
 <div class="modal" id="mCheat" onclick="if(event.target===this)closeM('mCheat')"><div class="mbox" style="max-width:720px;padding:10px;">
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
     <b style="font-size:16px;">📖 初心者向け ポーカー早見表</b><span style="flex:1"></span>
@@ -415,7 +440,7 @@ async function poll(){
   try{
     var j=await api('/api/room/'+ST.code+'/state','GET',null,'?playerId='+ST.pid);
     fail=0;$('conn').className='';$('conn2').style.background='#3ddc84';$('conn3').style.background='#3ddc84';
-    ST.room=j.room;ST.view=j.view;ST.you=j.you;ST.isHost=j.isHost;
+    ST.room=j.room;ST.view=j.view;ST.bRecv=Date.now();ST.you=j.you;ST.isHost=j.isHost;
     render();
   }catch(e){
     fail++;if(fail>1){$('conn').className='bad';$('conn2').style.background='#f2554b';$('conn3').style.background='#f2554b';}
@@ -427,7 +452,7 @@ async function send(move){
   try{
     var j=await api('/api/room/'+ST.code+'/action','POST',{playerId:ST.pid,move:move});
     if(!j.ok)toast(j.err||'その操作はできません');
-    else if(j.view){ST.view=j.view;render();}
+    else if(j.view){ST.view=j.view;ST.bRecv=Date.now();render();}
   }catch(e){toast('通信できませんでした');}
   ST.busy=false;poll();
 }
@@ -443,7 +468,50 @@ function render(){
   /* 新着ログをトースト（自分に関係なくテーブルでは全部ログ欄で見える） */
 }
 var STREET_JP=['プリフロップ','フロップ','ターン','リバー'];
+/* ---------- ブラインド自動アップ（計算はサーバーの poker_core.js。ここは表示と設定だけ） ---------- */
+var B_STEPS=[1,2,3,4,6,8,12,16,20,30,40,60,80,100,150,200]; /* poker_core.js の BLIND_STEPS と同じ（予定表の表示用） */
+var bMin=15;
+function bLeft(bi){ if(!bi||bi.msLeft==null)return null; return bi.paused?bi.msLeft:Math.max(0,bi.msLeft-(Date.now()-(ST.bRecv||Date.now()))); }
+function bFmt(ms){ var s=Math.ceil(ms/1000),m=Math.floor(s/60);s%=60; return m+':'+(s<10?'0':'')+s; }
+function bTimerTxt(bi){ var l=bLeft(bi); return l==null?'最大レベル':bFmt(l)+(bi.paused?' ⏸':''); }
+/* 1秒ごとに残り時間だけ書き換える（全体の再描画はポーリングに任せる） */
+setInterval(function(){
+  var V=ST&&ST.view;if(!V||!V.blindInfo)return;
+  document.querySelectorAll('.bTimer').forEach(function(el){el.textContent=bTimerTxt(V.blindInfo);});
+  var box=document.querySelector('#tBlindBar .bInfo'),l=bLeft(V.blindInfo);
+  if(box)box.classList.toggle('soon',l!=null&&l<=60000&&!V.blindInfo.paused);
+},1000);
+function renderBlindBar(V){
+  var bi=V.blindInfo,h;
+  if(!bi){ h='<button class="ghost" onclick="openBlind()">⏱ ブラインド自動アップ</button>'; }
+  else{
+    var l=bLeft(bi);
+    h='<div class="bInfo'+(l!=null&&l<=60000&&!bi.paused?' soon':'')+'"><span class="lv">Lv'+bi.level+'</span>'
+      +'<span>SB '+yen(bi.sb)+' / BB '+yen(bi.bb)+'</span>'
+      +'<span class="bTimer">'+bTimerTxt(bi)+'</span>'
+      +(bi.nextBb!=null?'<span class="hint">次 '+yen(bi.nextSb)+' / '+yen(bi.nextBb)+'</span>':'')
+      +'</div>'
+      +(bi.paused?'<button onclick="send({type:\'blind\',op:\'resume\'})">▶ 再開</button>':'<button onclick="send({type:\'blind\',op:\'pause\'})">⏸ 一時停止</button>')
+      +(bi.nextBb!=null?'<button onclick="if(confirm(\'ブラインドを次のレベルに上げますか？（次のハンドから）\'))send({type:\'blind\',op:\'next\'})">⏭ 次へ</button>':'')
+      +'<button onclick="if(confirm(\'ブラインド自動アップを終わりますか？（いまの額のまま固定）\'))send({type:\'blind\',op:\'stop\'})">⏹ 終了</button>';
+    if(bi.bb!==V.bb&&V.phase!=='idle')h+='<div class="pend" style="flex-basis:100%;text-align:center;">⏫ 次のハンドから SB '+yen(bi.sb)+' / BB '+yen(bi.bb)+'</div>';
+  }
+  $('tBlindBar').innerHTML=h;
+}
+function openBlind(){
+  var h='';[5,10,15,20,30].forEach(function(m){h+='<button data-m="'+m+'" onclick="bSetMin('+m+')">'+m+'分</button>';});
+  $('bMinBtns').innerHTML=h;bSetMin(bMin);openM('mBlind');
+}
+function bSetMin(m){
+  m=Math.floor(+m||0);if(m>=1&&m<=120)bMin=m;
+  document.querySelectorAll('#bMinBtns button').forEach(function(b){b.classList.toggle('sel',+b.dataset.m===bMin);});
+  var V=ST.view,r='<tr><th>レベル</th><th>始まる時間</th><th>SB</th><th>BB</th></tr>';
+  for(var i=0;i<8;i++){var k=B_STEPS[i];r+='<tr><td>Lv'+(i+1)+'</td><td>'+(i===0?'開始時':(i*bMin)+'分後')+'</td><td>'+yen(Math.round(V.sb*k))+'</td><td>'+yen(Math.round(V.bb*k))+'</td></tr>';}
+  $('bPrev').innerHTML=r+'<tr><td colspan="4" class="hint" style="text-align:center;">…このあとも同じように上がります</td></tr>';
+}
+function bStart(){ closeM('mBlind'); send({type:'blind',op:'start',min:bMin}); }
 function renderTable(V){
+  renderBlindBar(V);
   $('tPot').textContent=yen(V.pot+V.players.reduce(function(s,p){return s+p.bet;},0));
   $('tBlinds').textContent='SB '+yen(V.sb)+' / BB '+yen(V.bb)+'　ハンド#'+V.handNo;
   var st='';
@@ -622,7 +690,10 @@ function renderPhone(V){
   $('pName').textContent=me.name;
   $('pStackV').textContent=yen(me.stack);
   var totalPot=V.pot+V.players.reduce(function(s,p){return s+p.bet;},0);
+  var bi=V.blindInfo;
   $('pInfo').innerHTML='ポット '+yen(totalPot)+'　／　SB'+yen(V.sb)+'・BB'+yen(V.bb)
+    +(bi&&bi.nextBb!=null?'<br>⏱ あと <span class="bTimer">'+bTimerTxt(bi)+'</span> で '+yen(bi.nextSb)+'・'+yen(bi.nextBb):'')
+    +(bi&&bi.bb!==V.bb?'<br>⏫ 次のハンドから SB'+yen(bi.sb)+'・BB'+yen(bi.bb):'')
     +(me.bet>0?'<br>あなたのベット中: '+yen(me.bet):'');
   var bar=$('pTurnBar'),myTurn=(V.phase==='hand'&&V.turn===ST.you);
   bar.className=myTurn?'my':'';
@@ -683,7 +754,8 @@ function renderDealer(V){
   }
   box.className=cls;box.innerHTML='<div class="k">'+k+'</div><div class="t">'+title+'</div><div class="s">'+sub+'</div>';
   var stName=(V.phase==='hand')?['プリフロップ','フロップ','ターン','リバー'][V.street]:(V.phase==='showdown'?'ショーダウン':'ハンド間');
-  $('dInfo').innerHTML='<div class="b">ハンド<b>#'+V.handNo+'</b></div><div class="b">状況<b>'+stName+'</b></div><div class="b">ポット合計<b>'+yen(totalPot)+'</b></div><div class="b">ブラインド<b>'+yen(V.sb)+' / '+yen(V.bb)+'</b></div>';
+  $('dInfo').innerHTML='<div class="b">ハンド<b>#'+V.handNo+'</b></div><div class="b">状況<b>'+stName+'</b></div><div class="b">ポット合計<b>'+yen(totalPot)+'</b></div><div class="b">ブラインド<b>'+yen(V.sb)+' / '+yen(V.bb)+'</b></div>'
+    +(V.blindInfo?'<div class="b">⏱ Lv'+V.blindInfo.level+(V.blindInfo.nextBb!=null?' 次まで':'')+'<b class="bTimer">'+bTimerTxt(V.blindInfo)+'</b></div>':'');
   $('dSeats').innerHTML=P.map(function(p,i){
     var badges='';if(i===D)badges+='<span class="badge d">D</span>';if(i===sbS&&V.phase!=='idle')badges+='<span class="badge">SB</span>';if(i===bbS&&V.phase!=='idle')badges+='<span class="badge">BB</span>';
     if(p.out)badges+='<span class="badge off">退席</span>';else if(!connectedOf(i))badges+='<span class="badge off">通信なし</span>';

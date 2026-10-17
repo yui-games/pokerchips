@@ -20,6 +20,7 @@ function newTable(opts){
     turn:-1, currentBet:0, minRaise:0, pot:0,
     showdown:null,                     /* {pots:[{amount,elig:[seat]}], allinRush:bool} */
     lastResult:null,                   /* 直前ハンドの結果表示用 */
+    blind:null,                        /* ブラインド自動アップ {min,start,pausedAt,baseSb,baseBb}。null=固定 */
     log:[]
   };
 }
@@ -47,6 +48,64 @@ function removePlayer(T,seat){
   return {ok:true};
 }
 
+/* ---------- ブラインド自動アップ（時間制） ----------
+   開始時のSB/BBを基準に、設定した分ごとにレベルが上がる。
+   上がった額はハンドの途中では変えず「次のハンド開始時」に反映する。 */
+const BLIND_STEPS=[1,2,3,4,6,8,12,16,20,30,40,60,80,100,150,200]; /* 基準の何倍か */
+function blindAt(T,lv){
+  const k=BLIND_STEPS[Math.min(lv,BLIND_STEPS.length-1)];
+  return {sb:Math.round(T.blind.baseSb*k), bb:Math.round(T.blind.baseBb*k)};
+}
+function blindLevel(T,now){
+  const B=T.blind;
+  return Math.min(BLIND_STEPS.length-1, Math.floor(Math.max(0,(B.pausedAt||now)-B.start)/(B.min*60000)));
+}
+function blindCtl(T,a,now){
+  const B=T.blind;
+  if(a.op==='start'){
+    const m=Math.floor(+a.min||0);
+    if(!(m>=1&&m<=120))return {error:'1〜120分で設定してください'};
+    T.blind={min:m, start:now, pausedAt:null, baseSb:T.sb, baseBb:T.bb};
+    log(T,'⏱ ブラインド自動アップ開始（'+m+'分ごと）');
+    return {ok:true};
+  }
+  if(!B)return {error:'ブラインド自動アップは動いていません'};
+  if(a.op==='pause'){
+    if(B.pausedAt)return {error:'すでに一時停止中です'};
+    B.pausedAt=now; log(T,'⏸ ブラインドのタイマーを一時停止'); return {ok:true};
+  }
+  if(a.op==='resume'){
+    if(!B.pausedAt)return {error:'一時停止していません'};
+    B.start+=now-B.pausedAt; B.pausedAt=null; log(T,'▶ ブラインドのタイマーを再開'); return {ok:true};
+  }
+  if(a.op==='next'){
+    const lv=blindLevel(T,now);
+    if(lv>=BLIND_STEPS.length-1)return {error:'これ以上は上がりません'};
+    B.start=(B.pausedAt||now)-(lv+1)*B.min*60000;
+    log(T,'⏭ ブラインドを次のレベルへ（次のハンドから）'); return {ok:true};
+  }
+  if(a.op==='stop'){
+    T.blind=null; log(T,'⏹ ブラインド自動アップを終了（いまの額で固定）'); return {ok:true};
+  }
+  return {error:'不明な操作です'};
+}
+function applyBlindLevel(T,now){
+  if(!T.blind)return;
+  const b=blindAt(T,blindLevel(T,now));
+  if(b.sb!==T.sb||b.bb!==T.bb){
+    T.sb=b.sb; T.bb=b.bb;
+    log(T,'⏫ ブラインドアップ！ SB '+b.sb.toLocaleString()+' / BB '+b.bb.toLocaleString());
+  }
+}
+function blindInfo(T,now){
+  if(!T.blind)return null;
+  const B=T.blind, lv=blindLevel(T,now), cur=blindAt(T,lv), last=(lv>=BLIND_STEPS.length-1);
+  const nx=last?null:blindAt(T,lv+1);
+  return {min:B.min, level:lv+1, paused:!!B.pausedAt, sb:cur.sb, bb:cur.bb,
+    nextSb:nx?nx.sb:null, nextBb:nx?nx.bb:null,
+    msLeft:last?null:(lv+1)*B.min*60000-((B.pausedAt||now)-B.start)};
+}
+
 /* ---------- ハンド進行 ---------- */
 function eligible(T){ return T.players.map((p,i)=>i).filter(i=>!T.players[i].out&&T.players[i].stack>0); }
 function nextEligible(T,from){
@@ -64,6 +123,7 @@ function startHand(T){
   if(T.phase!=='idle')return {error:'進行中のハンドがあります'};
   const el=eligible(T);
   if(el.length<2)return {error:'チップを持つプレイヤーが2人以上必要です'};
+  applyBlindLevel(T,Date.now());
   T.handNo++; T.phase='hand'; T.street=0; T.pot=0; T.currentBet=0; T.showdown=null; T.lastResult=null;
   T.players.forEach(p=>{p.bet=0;p.cont=0;p.folded=false;p.allin=false;p.acted=false;p.inHand=false;});
   el.forEach(i=>{T.players[i].inHand=true;});
@@ -315,6 +375,7 @@ function viewFor(seat){
   const v=JSON.parse(JSON.stringify(ST));
   v.you=seat;
   if(seat>=0&&ST.players[seat])v.toCall=toCall(ST,seat);
+  v.blindInfo=blindInfo(ST,Date.now());
   return v;
 }
 /* isHost=true はテーブル画面（進行役）。着席者の操作は自席のみ */
@@ -330,6 +391,7 @@ function applyAction(seat,a,isHost){
       case 'judge':    if(!isHost)return {error:'テーブル画面から操作してください'}; return judgeShowdown(ST,a.board,a.holes);
       case 'addChips': if(!isHost)return {error:'テーブル画面から操作してください'}; return addChips(ST,a.seat,a.amt);
       case 'kick':     if(!isHost)return {error:'テーブル画面から操作してください'}; return removePlayer(ST,a.seat);
+      case 'blind':    if(!isHost)return {error:'テーブル画面から操作してください'}; return blindCtl(ST,a,Date.now());
       case 'foldFor':  if(!isHost)return {error:'テーブル画面から操作してください'};
         if(ST.phase!=='hand'||ST.turn!==a.seat)return {error:'その人の番ではありません'};
         return act(ST,a.seat,{type:'fold'});
@@ -346,6 +408,7 @@ if(typeof module!=='undefined'&&module.exports){
   module.exports={
     newTable,addPlayer,addChips,removePlayer,startHand,act,toCall,buildPots,awardPots,
     score5,cmpScore,best7,handName,judgeShowdown,livePlayers,
+    blindCtl,blindInfo,blindLevel,BLIND_STEPS,
     getState,setState,createTable,serverStep,viewFor,applyAction,joinTable,RANK_JP
   };
 }
