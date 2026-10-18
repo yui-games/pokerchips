@@ -38,6 +38,9 @@
   #potBox{text-align:center;margin:6px 0 12px;}
   #potBox .lbl{font-size:14px;color:var(--dim);}
   #potBox .pot{font-size:52px;font-weight:900;color:var(--gold);text-shadow:0 2px 8px rgba(0,0,0,.5);line-height:1.1;}
+  .gn{display:inline-flex;align-items:flex-end;height:1em;vertical-align:-0.12em;}
+  .gn img{height:1em;margin:0 -0.03em;filter:drop-shadow(0 3px 6px rgba(0,0,0,.6));}
+  .gn img.cm{height:.5em;margin:0 0.01em -0.18em;}
   #tBlindBar{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;margin:0 0 6px;}
   #tBlindBar .bInfo{background:rgba(4,20,12,.8);border:2px solid var(--line);border-radius:14px;padding:6px 14px;font-size:18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center;}
   #tBlindBar .bInfo.soon{border-color:#f2554b;box-shadow:0 0 14px rgba(242,85,75,.5);}
@@ -51,9 +54,59 @@
   .bTbl td,.bTbl th{border-bottom:1px solid var(--line);padding:4px 6px;text-align:right;}
   .bTbl th{color:var(--dim);font-weight:normal;}
   #stTxt{text-align:center;font-size:18px;min-height:26px;margin-bottom:8px;color:#cfe9d8;}
-  #plGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;}
-  .pl{background:rgba(4,20,12,.8);border:2px solid var(--line);border-radius:14px;padding:10px 12px;position:relative;}
-  .pl.turn{border-color:var(--gold);box-shadow:0 0 16px rgba(232,198,106,.55);}
+  /* 楕円テーブル：席は実際の座り順（時計回り）で楕円のふちに並べ、ベット額は席の前にチップで置く */
+  #felt{--hw:100px;position:relative;width:100%;height:clamp(440px,54vw,calc(100vh - 190px));margin:4px auto 0;}
+  @media (max-width:1000px){ #felt{--hw:86px;} .pl{width:172px!important;} .pl .stack{font-size:22px!important;} }
+  @media (orientation:portrait) and (min-width:761px){ #felt{height:min(72vw,calc(100vh - 260px));} }
+  /* テーブルの絵＝assets/table_oval.webp（ChatGPTで作成・背景を透明にしたもの）。画面の形に合わせて引き伸ばす */
+  #felt::before{content:'';position:absolute;inset:2% 1.5%;
+    background:url(assets/table_oval.webp?v=1) center/100% 100% no-repeat;filter:drop-shadow(0 12px 24px rgba(0,0,0,.6));}
+  #feltCenter{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:44%;text-align:center;z-index:2;}
+  #feltCenter #stTxt{margin-bottom:4px;}
+  #feltCenter .resCard{font-size:15px;}
+  #plGrid{position:absolute;inset:0;}
+  .pl{background:rgba(4,20,12,.88);border:2px solid var(--line);border-radius:14px;padding:8px 12px;position:absolute;width:196px;transform:translate(-50%,-50%);z-index:3;}
+  .pl.turn{border-color:var(--gold);box-shadow:0 0 16px rgba(232,198,106,.55);animation:turnGlow 1.3s ease-in-out infinite;}
+  @keyframes turnGlow{50%{box-shadow:0 0 30px rgba(232,198,106,.95);}}
+  .pl .bet{display:none;}
+  #felt .pl .ops{top:-15px;right:6px;}   /* 楕円では名前と重ならないよう、操作ボタンはカードの上のふちに乗せる */
+  #felt .pl .ops button{padding:3px 10px;background:#24563c;}
+  .betChip{position:absolute;transform:translate(-50%,-50%);z-index:2;background:rgba(0,0,0,.45);border-radius:99px;padding:3px 12px 3px 6px;font-size:18px;font-weight:900;color:var(--gold);white-space:nowrap;display:flex;align-items:center;}
+  .dBtn{position:absolute;transform:translate(-50%,-50%);z-index:2;width:30px;height:30px;border-radius:50%;background:#fff;color:#222;font-weight:900;font-size:16px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.6);}
+  /* 中央の大きな演出（レイズ・オールイン・勝ちなど） */
+  #flash{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:5;pointer-events:none;text-align:center;}
+  #flash .fl{background:rgba(3,16,9,.88);border:3px solid var(--line);border-radius:22px;padding:14px 34px;animation:flashIn 1.6s ease forwards;width:max-content;max-width:min(80vw,760px);}
+  #flash .fe{font-size:46px;line-height:1.1;}
+  #flash .ft{font-size:34px;font-weight:900;}
+  #flash .raise{border-color:var(--gold);color:var(--gold);}
+  #flash .allin{border-color:#ff7a3c;color:#ffb27a;box-shadow:0 0 50px rgba(255,90,40,.7);}
+  #flash .allin .ft{font-size:46px;}
+  #flash .win{border-color:var(--gold);color:var(--gold);box-shadow:0 0 60px rgba(232,198,106,.8);animation-duration:2.8s;}
+  #flash .win .ft{font-size:44px;}
+  #flash .small .ft{font-size:26px;}
+  #flash .small .fe{font-size:34px;}
+  #flash .fold{opacity:.85;color:#c9d6ce;}
+  #flash .bust{border-color:#f2554b;color:#ffb9b9;}
+  /* 文字画像（assets/fx_*.webp・ChatGPTで作成）を使う演出。画像の下に日本語で誰が何をしたか */
+  #flash .fl.img{background:none;border:none;box-shadow:none;padding:0;}
+  #flash .fl.img img{display:block;margin:0 auto;width:min(58vw,540px);filter:drop-shadow(0 6px 18px rgba(0,0,0,.7));}
+  #flash .fl.img.allin img,#flash .fl.img.win img{width:min(70vw,680px);}
+  #flash .fl.img.small img{width:min(44vw,400px);}
+  #flash .fl.img .ft{display:inline-block;margin-top:-6px;font-size:24px;background:rgba(3,16,9,.85);border:2px solid var(--line);border-radius:99px;padding:4px 22px;color:#fff;}
+  #flash .fl.img.win .ft{font-size:28px;border-color:var(--gold);color:var(--gold);}
+  @keyframes flashIn{0%{opacity:0;transform:scale(.5);}14%{opacity:1;transform:scale(1.1);}24%{transform:scale(1);}78%{opacity:1;}100%{opacity:0;transform:scale(1.04);}}
+  /* 画面が狭いとき（スマホでテーブル画面を開いた等）は、楕円をやめて今までのカード並びに戻す */
+  @media (max-width:760px){
+    #felt{height:auto;}
+    #felt::before,.betChip,.dBtn{display:none;}
+    #feltCenter{position:static;transform:none;width:auto;}
+    #plGrid{position:static;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-top:8px;}
+    .pl{position:relative;width:auto;transform:none;left:auto!important;top:auto!important;}
+    .pl .bet{display:block;}
+    #felt .pl .ops{top:8px;}
+    #flash{position:fixed;}
+    #flash .ft{font-size:24px;} #flash .fe{font-size:34px;}
+  }
   .pl.folded{opacity:.45;}
   .pl .nm{font-size:17px;font-weight:bold;display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
   .pl .stack{font-size:26px;font-weight:900;color:#bdf0d0;}
@@ -208,13 +261,19 @@
     <button class="ghost" onclick="showQr()">📱 参加QR</button>
     <span style="flex:1"></span>
     <span class="hint" id="tBlinds"></span>
+    <button class="ghost" id="sndBtn" onclick="sndToggle()" title="効果音">🔊</button>
     <button class="ghost" onclick="leaveAll()">終了</button>
   </div>
   <div id="tBlindBar"></div>
-  <div id="potBox"><div class="lbl">ポット</div><div class="pot"><img class="chip36" src="assets/chip_red.png" alt="" onerror="this.style.display='none'"><span id="tPot">0</span></div></div>
-  <div id="stTxt"></div>
-  <div id="resultBox"></div>
-  <div id="plGrid"></div>
+  <div id="felt">
+    <div id="feltCenter">
+      <div id="potBox"><div class="lbl">ポット</div><div class="pot"><img class="chip36" src="assets/chip_red.png" alt="" onerror="this.style.display='none'"><span id="tPot">0</span></div></div>
+      <div id="stTxt"></div>
+      <div id="resultBox"></div>
+    </div>
+    <div id="plGrid"></div>
+    <div id="flash"></div>
+  </div>
   <div id="tCtrl"></div>
   <div id="logBox"></div>
 </div>
@@ -468,6 +527,19 @@ function render(){
   /* 新着ログをトースト（自分に関係なくテーブルでは全部ログ欄で見える） */
 }
 var STREET_JP=['プリフロップ','フロップ','ターン','リバー'];
+/* ---------- 金色の数字（assets/dg_0〜9・dg_c＝カンマ。ChatGPTで作成）：ポットと「あなたのチップ」だけに使う ----------
+   11枚そろって読み込めたときだけ画像にする。読み込めなければ今までどおりの文字。読み上げ用に文字も持たせる */
+var DG={ok:0,v:'2'};
+'0123456789c'.split('').forEach(function(k){var im=new Image();im.onload=function(){DG.ok++;};im.src='assets/dg_'+k+'.webp?v='+DG.v;});
+function goldNum(el,n){
+  var s=yen(n);
+  if(el.dataset.n===s&&el.dataset.g===String(DG.ok===11))return;   /* 同じ数字なら書きかえない（ちらつき防止） */
+  el.dataset.n=s;el.dataset.g=String(DG.ok===11);
+  if(DG.ok<11){el.textContent=s;return;}
+  el.innerHTML='<span class="gn" role="img" aria-label="'+s+'">'+s.split('').map(function(c){
+    return c===','?'<img class="cm" src="assets/dg_c.webp?v='+DG.v+'" alt="">':'<img src="assets/dg_'+c+'.webp?v='+DG.v+'" alt="">';
+  }).join('')+'</span>';
+}
 /* ---------- ブラインド自動アップ（計算はサーバーの poker_core.js。ここは表示と設定だけ） ---------- */
 var B_STEPS=[1,2,3,4,6,8,12,16,20,30,40,60,80,100,150,200]; /* poker_core.js の BLIND_STEPS と同じ（予定表の表示用） */
 var bMin=15;
@@ -510,9 +582,110 @@ function bSetMin(m){
   $('bPrev').innerHTML=r+'<tr><td colspan="4" class="hint" style="text-align:center;">…このあとも同じように上がります</td></tr>';
 }
 function bStart(){ closeM('mBlind'); send({type:'blind',op:'start',min:bMin}); }
+
+/* ---------- 効果音（チップのじゃらじゃら）：音のファイルは使わず、その場で合成する ----------
+   ブラウザは画面を一度タップするまで音を出せないので、最初のタップで準備する。テーブル画面だけで鳴らす。 */
+var SND={ctx:null,on:true,noise:null};
+try{SND.on=localStorage.getItem('pokerchips_snd')!=='off';}catch(e){}
+function sndInit(){
+  if(!SND.ctx){var AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;SND.ctx=new AC();
+    var n=SND.ctx.createBuffer(1,SND.ctx.sampleRate*0.08,SND.ctx.sampleRate),d=n.getChannelData(0);
+    for(var i=0;i<d.length;i++)d[i]=Math.random()*2-1;SND.noise=n;}
+  if(SND.ctx.state==='suspended')SND.ctx.resume();
+  sndLoad();
+}
+/* 録音した音（assets/snd_*.mp3・Pixabayの無料素材を切り出したもの）。あればこちらを優先して鳴らす */
+var SND_FILES={check:'assets/snd_check.mp3',call:'assets/snd_call.mp3',allin:'assets/snd_allin.mp3',win:'assets/snd_win.mp3'};
+SND.buf={};
+function sndLoad(){
+  if(SND.loading)return;SND.loading=true;
+  Object.keys(SND_FILES).forEach(function(k){
+    fetch(SND_FILES[k]).then(function(r){if(!r.ok)throw 0;return r.arrayBuffer();})
+      .then(function(a){return new Promise(function(ok,ng){SND.ctx.decodeAudioData(a,ok,ng);});})
+      .then(function(b){SND.buf[k]=b;}).catch(function(){});
+  });
+}
+function sndPlay(k,delay,rate){
+  var s=SND.ctx.createBufferSource();s.buffer=SND.buf[k];if(rate)s.playbackRate.value=rate;
+  s.connect(SND.ctx.destination);s.start(SND.ctx.currentTime+(delay||0));
+}
+document.addEventListener('pointerdown',sndInit);
+function sndToggle(){SND.on=!SND.on;try{localStorage.setItem('pokerchips_snd',SND.on?'on':'off');}catch(e){}$('sndBtn').textContent=SND.on?'🔊':'🔇';if(SND.on)chips('call');}
+/* チップ1枚が当たる「カチッ」。高めの音＝チップ同士、低めの音＝テーブルを叩く音 */
+function clack(t,freq,vol){
+  var c=SND.ctx,s=c.createBufferSource(),f=c.createBiquadFilter(),g=c.createGain();
+  s.buffer=SND.noise;f.type='bandpass';f.frequency.value=freq;f.Q.value=5;
+  g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.045);
+  s.connect(f);f.connect(g);g.connect(c.destination);s.start(t);s.stop(t+0.06);
+}
+function chips(kind){
+  if(!SND.on||!SND.ctx||SND.ctx.state!=='running')return;
+  /* レイズはコールと同じ「チップを置く音」を少しずらして2回＝置く枚数が多い感じに */
+  if(kind==='raise'&&SND.buf.call){sndPlay('call');sndPlay('call',0.12,1.07);return;}
+  if(SND.buf[kind]){sndPlay(kind);return;}
+  var t=SND.ctx.currentTime+0.02,n,spread,lo=2600,hi=5200,vol=0.9;
+  if(kind==='check'){clack(t,700,1);clack(t+0.13,650,0.9);return;}  /* コンコン（テーブルを叩く） */
+  if(kind==='call'){n=5;spread=0.25;}
+  else if(kind==='raise'){n=10;spread=0.45;}
+  else if(kind==='allin'){n=26;spread=0.9;vol=1;}
+  else if(kind==='win'){n=34;spread=1.4;}
+  else return;
+  for(var i=0;i<n;i++){
+    /* 最初は詰まって、だんだんまばらに（崩れて落ち着くチップの音） */
+    var x=Math.pow(Math.random(),1.6)*spread;
+    clack(t+x,lo+Math.random()*(hi-lo),vol*(0.35+Math.random()*0.65)*(1-x/spread*0.6));
+  }
+}
+
+/* ---------- 中央の演出：新しく増えたログを1件ずつ大きく見せる ---------- */
+var FL={log:null,q:[],busy:false};
+/* img＝assets/fx_○○.webp を使う（読み込めなければ絵文字＋文字の表示にもどる） */
+function flashKind(t){
+  if(t.indexOf('ショーダウン')>=0)return {c:'small',x:'🃏',s:'',m:'ショーダウン！',img:'showdown'};
+  var e=Array.from(t)[0],rest=t.slice(e.length).trim();
+  if(e==='🏆')return {c:'win',s:'win',img:'win'};
+  if(e==='📢')return {c:'raise',s:'raise',img:'raise'};
+  if(e==='🔥')return {c:'allin',s:'allin',img:'allin'};
+  if(e==='📞')return {c:'small',s:'call',img:'call'};
+  if(e==='✋')return {c:'small',s:'check',img:'check'};
+  if(e==='🙅')return {c:'small fold',s:'',img:'fold'};
+  if(e==='💀')return {c:'small bust',s:'',m:rest.replace(/（.*$/,'')};
+  if(e==='⏫')return {c:'raise',s:'',img:'blindup'};
+  if(e==='▶'&&rest.indexOf('めくって')>=0)return {c:'small',s:'',m:rest.split('：')[0]};
+  if(e==='🃏'&&rest.indexOf('ハンド#')===0)return {c:'small',s:'',m:rest.replace(/（.*$/,''),img:'newhand'};
+  return null;
+}
+/* 文字画像は先に読み込んでおく（表示した瞬間に出るように）。失敗したものは使わない */
+var FX_OK={},FX_V='5';   /* 画像を差し替えたら数字を上げる（古い画像が残らないように） */
+['raise','call','check','fold','allin','win','showdown','blindup','newhand'].forEach(function(k){
+  var im=new Image();im.onload=function(){FX_OK[k]=true;};im.src='assets/fx_'+k+'.webp?v='+FX_V;
+});
+function flashCheck(V){
+  var L=V.log||[];
+  if(FL.log===null){FL.log=L.slice();return;}   /* 開いた直後は過去のログを演出しない */
+  var old=FL.log,k=0;
+  for(;k<=L.length;k++){var ok=true;for(var j=k;j<L.length;j++){if(old[j-k]!==L[j]){ok=false;break;}}if(ok)break;}
+  FL.log=L.slice();
+  for(var i=Math.min(k,3)-1;i>=0;i--)FL.q.push(L[i]);
+  flashNext();
+}
+function flashNext(){
+  if(FL.busy||!FL.q.length)return;
+  var t=FL.q.shift(),f=flashKind(t);
+  if(!f){flashNext();return;}
+  var e=f.x||Array.from(t)[0],m=f.m||t.slice(Array.from(t)[0].length).trim();
+  if(f.img&&FX_OK[f.img])
+    $('flash').innerHTML='<div class="fl img '+f.c+'"><img src="assets/fx_'+f.img+'.webp?v='+FX_V+'" alt=""><div class="ft">'+esc(m)+'</div></div>';
+  else
+    $('flash').innerHTML='<div class="fl '+f.c+'"><div class="fe">'+e+'</div><div class="ft">'+esc(m)+'</div></div>';
+  if(f.s)chips(f.s);
+  FL.busy=true;
+  setTimeout(function(){FL.busy=false;flashNext();},FL.q.length?1000:(f.c==='win'?2800:1600));
+}
 function renderTable(V){
   renderBlindBar(V);
-  $('tPot').textContent=yen(V.pot+V.players.reduce(function(s,p){return s+p.bet;},0));
+  $('sndBtn').textContent=SND.on?'🔊':'🔇';
+  goldNum($('tPot'),V.pot+V.players.reduce(function(s,p){return s+p.bet;},0));
   $('tBlinds').textContent='SB '+yen(V.sb)+' / BB '+yen(V.bb)+'　ハンド#'+V.handNo;
   var st='';
   if(V.phase==='idle')st=V.players.length<2?'📱 参加QRからプレイヤーを集めよう（2人以上で開始）':'▶ ハンド開始を押して、カードを配ってください';
@@ -520,9 +693,19 @@ function renderTable(V){
   if(V.phase==='showdown')st=(V.showdown.allinRush?'🔥 全員オールイン！残りのカードをめくって→ ':'')+'🃏 ショーダウン：勝者を選ぶか「カードで判定」';
   $('stTxt').innerHTML=st;
   /* プレイヤー */
-  var h='';
+  var h='',bets='';
+  /* 席の位置：0番の席を下の真ん中に置き、座った順に時計回り（画面の左回り）で楕円のふちに並べる */
+  var N=V.players.length;
   V.players.forEach(function(p,i){
     if(p.out)return;
+    var ang=Math.PI/2+i*2*Math.PI/Math.max(N,2),cx=Math.cos(ang),cy=Math.sin(ang);
+    /* 左右の端の席が画面からはみ出さないよう、カードの半分の幅（--hw）だけ内側に寄せる */
+    /* テーブルの絵は角の丸い長方形に近い形なので、楕円より四角寄りの曲線（指数2/3）でふちに沿わせる */
+    var pos=function(f,da){var a=ang+(da||0),c=Math.cos(a),s=Math.sin(a);
+      var ex=(c<0?-1:1)*Math.pow(Math.abs(c),2/3),ey=(s<0?-1:1)*Math.pow(Math.abs(s),2/3);
+      return 'left:clamp(var(--hw),'+(50+44*f*ex)+'%,calc(100% - var(--hw)));top:'+(50+41*f*ey)+'%;';};
+    if(p.bet>0)bets+='<div class="betChip" style="'+pos(.56)+'"><img class="chip20" src="assets/chip_red.png" alt="" onerror="this.style.display=\'none\'">'+yen(p.bet)+'</div>';
+    if(i===V.dealer&&V.phase!=='idle')bets+='<div class="dBtn" style="'+pos(.68,.32)+'">D</div>';
     var badges='';
     if(i===V.dealer&&V.phase!=='idle')badges+='<span class="badge d">D</span>';
     if(V.phase!=='idle'){
@@ -538,14 +721,15 @@ function renderTable(V){
     }else if(V.phase==='hand'&&V.turn===i){
       ops='<button onclick="send({type:\'foldFor\',seat:'+i+'})">代行フォールド</button>';
     }
-    h+='<div class="pl'+(V.turn===i?' turn':'')+(p.folded?' folded':'')+'">'
+    h+='<div class="pl'+(V.turn===i?' turn':'')+(p.folded?' folded':'')+'" style="'+pos(1)+'">'
       +'<div class="ops">'+ops+'</div>'
       +'<div class="nm">'+esc(p.name)+' '+badges+'</div>'
       +'<div class="stack"><img class="chip20" src="assets/chip_white.png" alt="" onerror="this.style.display=\'none\'">'+yen(p.stack)+'</div>'
       +'<div class="bet">'+(p.bet>0?'ベット中: '+yen(p.bet):'')+'</div>'
       +'</div>';
   });
-  $('plGrid').innerHTML=h;
+  $('plGrid').innerHTML=h+bets;
+  flashCheck(V);
   /* 結果表示 */
   var rb='';
   if(V.lastResult){
@@ -688,7 +872,7 @@ function renderPhone(V){
   var me=V.players[ST.you];if(!me)return;
   eqSync(V);
   $('pName').textContent=me.name;
-  $('pStackV').textContent=yen(me.stack);
+  goldNum($('pStackV'),me.stack);
   var totalPot=V.pot+V.players.reduce(function(s,p){return s+p.bet;},0);
   var bi=V.blindInfo;
   $('pInfo').innerHTML='ポット '+yen(totalPot)+'　／　SB'+yen(V.sb)+'・BB'+yen(V.bb)
