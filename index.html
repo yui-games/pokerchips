@@ -700,6 +700,20 @@ function bSetMin(m){
   $('bPrev').innerHTML=r+'<tr><td colspan="4" class="hint" style="text-align:center;">…このあとも同じように上がります</td></tr>';
 }
 function bStart(){ closeM('mBlind'); send({type:'blind',op:'start',min:bMin}); }
+/* ボタン決め（くじ引き）：全員が1枚ずつ引いた結果。いちばん強いカード（A＞K…＞2、同じなら♠＞♥＞♦＞♣）の人が次のハンドのD */
+var DRAW_R={14:'A',13:'K',12:'Q',11:'J'},DRAW_S={s:'♠',h:'♥',d:'♦',c:'♣'};
+function drawCardTxt(c){return (DRAW_R[c.r]||c.r)+DRAW_S[c.s];}
+function btnDrawHTML(V){
+  var D=V.btnDraw;if(!D)return '';
+  var h='<div style="background:rgba(0,0,0,.35);border-radius:14px;padding:10px 14px;margin:0 auto 12px;max-width:560px">'
+    +'<div style="font-weight:700;margin-bottom:6px">🎴 ボタン決め（いちばん強いカードの人がボタン（D））</div><div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center">';
+  D.cards.slice().sort(function(a,b){return (b.r*4+'cdhs'.indexOf(b.s))-(a.r*4+'cdhs'.indexOf(a.s));}).forEach(function(c){
+    var p=V.players[c.seat]||{},w=c.seat===D.winner,red=c.s==='h'||c.s==='d';
+    h+='<div style="background:'+(w?'#ffd54a':'#fff')+';color:#222;border-radius:10px;padding:6px 10px;min-width:72px;text-align:center;'+(w?'box-shadow:0 0 0 3px #fff;':'')+'">'
+      +'<div style="font-size:22px;font-weight:800;color:'+(red?'#c62828':'#222')+'">'+drawCardTxt(c)+'</div><div style="font-size:12px">'+(w?'👑 ':'')+esc(p.name||'')+'</div></div>';
+  });
+  return h+'</div><div class="hint" style="margin-top:6px">「▶ ハンド開始」で、'+esc((V.players[D.winner]||{}).name||'')+' さんがボタン（D）になります</div></div>';
+}
 
 /* ---------- 効果音（チップのじゃらじゃら）：音のファイルは使わず、その場で合成する ----------
    ブラウザは画面を一度タップするまで音を出せないので、最初のタップで準備する。チップの音はテーブル画面だけ、スマホは自分の番の音（turnChime）だけ。 */
@@ -886,8 +900,10 @@ function renderTable(V){
   /* コントロール */
   var c='';
   if(V.phase==='idle'){
-    c='<button class="gold" style="font-size:20px;padding:16px 40px;" onclick="send({type:\'start\'})" '
-      +(V.players.filter(function(p){return !p.out&&p.stack>0;}).length<2?'disabled':'')+'>▶ ハンド開始</button>';
+    var nAlive=V.players.filter(function(p){return !p.out&&p.stack>0;}).length;
+    c=btnDrawHTML(V)
+      +'<button class="gold" style="font-size:20px;padding:16px 40px;" onclick="send({type:\'start\'})" '+(nAlive<2?'disabled':'')+'>▶ ハンド開始</button>'
+      +(nAlive>=2?'<div style="margin-top:8px"><button onclick="'+(V.btnDraw?'if(confirm(\'ボタン決めをやり直しますか？\'))':'')+'send({type:\'drawBtn\'})">🎴 ボタンをくじで決める</button></div>':'');
   }
   if(V.phase==='showdown'){
     c=renderPots(V)+'<div style="display:flex;gap:10px;justify-content:center;margin-top:10px;">'
@@ -1111,6 +1127,8 @@ function renderPhone(V){
   bar.className=myTurn?'my':'';
   bar.id='pTurnBar';
   if(locked){bar.className='';bar.textContent='🃏 '+PH_LOCK.name+'へ進みます…';}
+  else if(V.phase==='idle'&&V.btnDraw){var mc=V.btnDraw.cards.filter(function(c){return c.seat===V.you;})[0],wp=V.players[V.btnDraw.winner]||{};
+    bar.textContent='🎴 ボタン決め：'+(mc?'あなたは '+drawCardTxt(mc)+'　':'')+(V.btnDraw.winner===V.you?'👑 あなたがボタン（D）！':wp.name+' さんがボタン（D）');}
   else if(V.phase==='idle')bar.textContent=V.lastResult?V.lastResult.text:'ハンド開始を待っています…';
   else if(V.phase==='showdown')bar.textContent='🃏 ショーダウン！テーブル画面で分配中';
   else if(me.folded)bar.textContent='フォールド中…次のハンドまで待ってね';
@@ -1148,7 +1166,8 @@ function renderDealer(V){
   var box=$('dNow'),k='いまやること',title='',sub='',cls='';
   if(n<2){title='プレイヤーを待っています';sub='各自がスマホで参加したら、テーブル画面で「▶ハンド開始」。';cls='wait';}
   else if(V.phase==='idle'){
-    if(V.handNo===0){title='開始前の準備';sub='カードをよく切る → テーブル画面で<b>「▶ハンド開始」</b>を押してもらう。最初のDは自動で決まります。';cls='wait';}
+    if(V.btnDraw){title='ボタン決めの結果';sub='<b>'+nm(V.btnDraw.winner)+'</b> さんがボタン（D）（いちばん強いカード）。カードをよく切って、テーブル画面で<b>「▶ハンド開始」</b>。';cls='wait';}
+    else if(V.handNo===0){title='開始前の準備';sub='カードをよく切る → テーブル画面で<b>「▶ハンド開始」</b>を押してもらう。最初のDは自動で決まります（テーブル画面の「🎴 ボタンをくじで決める」でくじ引きもできます）。';cls='wait';}
     else{title='カードを回収してシャッフル';sub=(V.lastResult&&V.lastResult.text?'前のハンド：'+esc(V.lastResult.text)+'<br>':'')+'次は テーブル画面で<b>「▶ハンド開始」</b>。Dは左隣に移ります。';cls='wait';}
   }
   else if(V.phase==='showdown'){

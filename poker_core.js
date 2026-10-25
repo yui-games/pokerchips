@@ -106,6 +106,23 @@ function blindInfo(T,now){
     msLeft:last?null:(lv+1)*B.min*60000-((B.pausedAt||now)-B.start)};
 }
 
+/* ---------- ボタン決め（くじ引き） ----------
+   ハンドの合間に、チップを持つ全員が山から1枚ずつ引き、いちばん強いカードの人が次のハンドのディーラーボタン。
+   強さ＝数字（A＞K＞…＞2）、同じ数字ならマーク（♠＞♥＞♦＞♣）＝実際のポーカーのボタン決めと同じ。
+   結果は T.btnDraw に残し（画面の演出用）、次のハンド開始時に T.dealer に反映して消す。 */
+const DRAW_SUITS=['c','d','h','s'];   /* 弱い→強い */
+function drawButton(T,rand){
+  if(T.phase!=='idle')return {error:'ハンドの合間に行ってください'};
+  const el=eligible(T); if(el.length<2)return {error:'チップを持つプレイヤーが2人以上必要です'};
+  rand=rand||Math.random;
+  const deck=[]; for(let r=2;r<=14;r++)for(let s=0;s<4;s++)deck.push({r,s});
+  const cards=el.map(seat=>{const k=Math.floor(rand()*deck.length);const c=deck.splice(k,1)[0];return {seat,r:c.r,s:DRAW_SUITS[c.s],v:c.r*4+c.s};});
+  const win=cards.reduce((a,b)=>b.v>a.v?b:a);
+  T.btnDraw={cards:cards.map(c=>({seat:c.seat,r:c.r,s:c.s})),winner:win.seat,at:Date.now()};
+  log(T,'🎴 ボタン決め：'+T.players[win.seat].name+' がボタン（D）（'+(RANK_JP[win.r]||win.r)+'）');
+  return {ok:true,winner:win.seat};
+}
+
 /* ---------- ハンド進行 ---------- */
 function eligible(T){ return T.players.map((p,i)=>i).filter(i=>!T.players[i].out&&T.players[i].stack>0); }
 function nextEligible(T,from){
@@ -127,7 +144,9 @@ function startHand(T){
   T.handNo++; T.phase='hand'; T.street=0; T.pot=0; T.currentBet=0; T.showdown=null; T.lastResult=null;
   T.players.forEach(p=>{p.bet=0;p.cont=0;p.folded=false;p.allin=false;p.acted=false;p.inHand=false;});
   el.forEach(i=>{T.players[i].inHand=true;});
-  T.dealer=nextEligible(T,(T.dealer<0? T.players.length-1 : T.dealer));
+  if(T.btnDraw&&el.indexOf(T.btnDraw.winner)>=0)T.dealer=T.btnDraw.winner;   /* くじ引きで決めたボタン */
+  else T.dealer=nextEligible(T,(T.dealer<0? T.players.length-1 : T.dealer));
+  T.btnDraw=null;
   let sbSeat, bbSeat;
   if(el.length===2){ sbSeat=T.dealer; bbSeat=nextEligible(T,T.dealer); }        /* ヘッズアップはD=SB */
   else{ sbSeat=nextEligible(T,T.dealer); bbSeat=nextEligible(T,sbSeat); }
@@ -392,6 +411,7 @@ function applyAction(seat,a,isHost){
       case 'addChips': if(!isHost)return {error:'テーブル画面から操作してください'}; return addChips(ST,a.seat,a.amt);
       case 'kick':     if(!isHost)return {error:'テーブル画面から操作してください'}; return removePlayer(ST,a.seat);
       case 'blind':    if(!isHost)return {error:'テーブル画面から操作してください'}; return blindCtl(ST,a,Date.now());
+      case 'drawBtn':  if(!isHost)return {error:'テーブル画面から操作してください'}; return drawButton(ST);
       case 'foldFor':  if(!isHost)return {error:'テーブル画面から操作してください'};
         if(ST.phase!=='hand'||ST.turn!==a.seat)return {error:'その人の番ではありません'};
         return act(ST,a.seat,{type:'fold'});
@@ -408,7 +428,7 @@ if(typeof module!=='undefined'&&module.exports){
   module.exports={
     newTable,addPlayer,addChips,removePlayer,startHand,act,toCall,buildPots,awardPots,
     score5,cmpScore,best7,handName,judgeShowdown,livePlayers,
-    blindCtl,blindInfo,blindLevel,BLIND_STEPS,
+    blindCtl,blindInfo,blindLevel,BLIND_STEPS,drawButton,
     getState,setState,createTable,serverStep,viewFor,applyAction,joinTable,RANK_JP
   };
 }
