@@ -41,7 +41,7 @@
   .gn{display:inline-flex;align-items:flex-end;height:1em;vertical-align:-0.12em;}
   .gn img{height:1em;margin:0 -0.03em;filter:drop-shadow(0 3px 6px rgba(0,0,0,.6));}
   .gn img.cm{height:.5em;margin:0 0.01em -0.18em;}
-  #tBlindBar{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;margin:0 0 6px;}
+  #tBlindBar{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;flex:1 1 360px;min-width:0;}
   #tBlindBar .bInfo{background:rgba(4,20,12,.8);border:2px solid var(--line);border-radius:14px;padding:6px 14px;font-size:18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center;}
   #tBlindBar .bInfo.soon{border-color:#f2554b;box-shadow:0 0 14px rgba(242,85,75,.5);}
   #tBlindBar .lv{color:var(--gold);font-weight:bold;}
@@ -61,7 +61,7 @@
   /* テーブルの絵＝assets/table_oval.webp（ChatGPTで作成・背景を透明にしたもの）。画面の形に合わせて引き伸ばす */
   #felt::before{content:'';position:absolute;inset:2% 1.5%;
     background:url(assets/table_oval.webp?v=1) center/100% 100% no-repeat;filter:drop-shadow(0 12px 24px rgba(0,0,0,.6));}
-  #feltCenter{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:44%;text-align:center;z-index:2;}
+  #feltCenter{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:44%;text-align:center;z-index:3;}   /* 分配のボタンが卓上のD/SB/BBボタンより上に来るように */
   #feltCenter #stTxt{margin-bottom:4px;}
   #feltCenter .resCard{font-size:15px;}
   #plGrid{position:absolute;inset:0;}
@@ -142,8 +142,36 @@
   .potX button.sel{outline:2px solid var(--gold);background:#4a3c12;}
   .pl .ops{position:absolute;top:8px;right:8px;}
   .pl .ops button{padding:4px 10px;font-size:13px;background:rgba(255,255,255,.12);}
-  #tCtrl{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:14px;}
-  #logBox{margin-top:12px;background:rgba(0,0,0,.35);border-radius:10px;padding:8px 12px;font-size:13.5px;line-height:1.8;min-height:40px;}
+  #tCtrl{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:10px;}
+  #tCtrl:empty{display:none;}
+  #logRow{display:flex;align-items:center;gap:10px;margin-top:12px;background:rgba(0,0,0,.35);border-radius:10px;padding:4px 6px 4px 12px;}
+  #logBox{flex:1;min-width:0;font-size:13.5px;line-height:1.7;height:calc(2 * 1.7em);overflow:hidden;}
+  #logBox div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  #logBox div:first-child{color:#fff;}
+  #logAllBtn{flex:none;padding:7px 12px;font-size:13px;}
+  #logAll{max-height:70vh;overflow-y:auto;scrollbar-color:var(--line) transparent;font-size:14px;line-height:1.75;background:rgba(0,0,0,.3);border-radius:10px;padding:8px 12px;}
+  #logAll div{border-bottom:1px solid rgba(255,255,255,.06);}
+  #logAll div.hs{color:var(--gold);font-weight:bold;margin-top:6px;}
+  /* iPadを横向きで卓に置く用：スクロールなしで1画面に収める。卓の絵が残りの高さいっぱいに広がり、記録は新しい2行だけ */
+  @media (orientation:landscape) and (min-width:900px){
+    body.scr-table .wrap{max-width:none;padding:0;}
+    #table{height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden;padding:8px 12px 6px;}
+    #tHead{flex:none;margin-bottom:2px;gap:8px;flex-wrap:nowrap;}
+    #tHead button{padding:8px 14px;}
+    #tBlindBar{flex-wrap:nowrap;gap:8px;}
+    #tBlindBar .bInfo{padding:3px 12px;font-size:15px;gap:10px;flex-wrap:nowrap;white-space:nowrap;}
+    #tBlindBar .bTimer{font-size:24px;}
+    #tBlindBar button{padding:5px 10px;font-size:13px;white-space:nowrap;flex:none;}
+    /* 「次のハンドから○○」は見出しの行に入りきらないので出さない（上がった時は中央の BLIND UP の演出で分かる） */
+    #tBlindBar .pend{display:none;}
+    /* タイマーが動いている間は、右上の「SB/BB」の小さな文字はまん中の表示と同じなので消す */
+    #tHead:has(.bInfo) #tBlinds{display:none;}
+    #tHead > *{flex-shrink:0;}
+    #tHead > #tBlindBar{flex-shrink:1;}
+    #felt{flex:1 1 0;height:auto!important;min-height:0;margin-top:0;}
+    #logRow{flex:none;margin-top:4px;padding:2px 6px 2px 12px;}
+    #logBox{font-size:13px;line-height:1.55;}
+  }
   #resultBox{margin-top:10px;}
   .resCard{background:rgba(232,198,106,.12);border:2px solid var(--gold);border-radius:12px;padding:10px 14px;font-size:16px;}
   .potRow{background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:8px;}
@@ -284,24 +312,26 @@
     <span class="code" id="tCode">----</span>
     <div id="conn"></div>
     <button class="ghost" onclick="showQr()">📱 参加QR</button>
-    <span style="flex:1"></span>
+    <!-- ブラインドの表示は見出しの行のまん中に置く（横長の画面で縦の場所を節約。狭いと次の行に回る） -->
+    <div id="tBlindBar"></div>
     <span class="hint" id="tBlinds"></span>
     <button class="ghost" id="sndBtn" onclick="sndToggle()" title="効果音">🔊</button>
     <button class="ghost" onclick="leaveAll()">終了</button>
   </div>
-  <div id="tBlindBar"></div>
   <div id="felt">
     <div id="feltCenter">
       <div id="potBox"><div class="lbl">ポット</div><div class="pot"><img class="chip36" src="assets/chip_red.png" alt="" onerror="this.style.display='none'"><span id="tPot">0</span></div></div>
       <div id="stTxt"></div>
       <div id="resultBox"></div>
+      <!-- ハンド開始・ショーダウンの分配ボタンは卓のまん中に出す（画面の下にはみ出さないように） -->
+      <div id="tCtrl"></div>
     </div>
     <div id="plGrid"></div>
     <div id="posBtns"></div>
     <div id="flash"></div>
   </div>
-  <div id="tCtrl"></div>
-  <div id="logBox"></div>
+  <!-- 記録：ふだんは新しい2行だけ。振り返りたい時・怪しい時は「すべての記録」で全部を開く -->
+  <div id="logRow"><div id="logBox"></div><button class="ghost" id="logAllBtn" onclick="openLog()">📜 すべての記録</button></div>
 </div>
 
 <!-- ===== スマホ画面（プレイヤー） ===== -->
@@ -416,6 +446,14 @@
   </div>
 </div></div>
 
+<div class="modal" id="mLog" onclick="if(event.target===this)closeM('mLog')"><div class="mbox" style="max-width:640px;">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+    <b style="font-size:16px;">📜 すべての記録</b><span class="hint">（上が新しい）</span><span style="flex:1"></span>
+    <button class="ghost" style="padding:6px 14px;font-size:14px;" onclick="closeM('mLog')">閉じる</button>
+  </div>
+  <div id="logAll"></div>
+</div></div>
+
 <div class="modal" id="mCheat" onclick="if(event.target===this)closeM('mCheat')"><div class="mbox" style="max-width:720px;padding:10px;">
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
     <b style="font-size:16px;">📖 初心者向け ポーカー早見表</b><span style="flex:1"></span>
@@ -493,7 +531,7 @@ async function joinTable(){
     show('phone');$('pCode').textContent='卓 '+code;poll();
   }catch(e){$('lobbyErr').textContent=e.message;}
 }
-function show(id){['lobby','table','phone','dealer'].forEach(function(x){$(x).style.display=(x===id)?'':'none';});document.body.className=(id==='phone'||id==='dealer')?'bgP':'bgT';}
+function show(id){['lobby','table','phone','dealer'].forEach(function(x){$(x).style.display=(x===id)?'':'none';});document.body.className=((id==='phone'||id==='dealer')?'bgP':'bgT')+' scr-'+id;}
 /* ディーラー（進行係）として入る：席は取らない。サーバーは未登録IDでも公開情報（view）を返すので、閲覧専用で使える */
 async function joinDealer(){
   ST.srv=$('inSrv').value.trim()||DEFAULT_SRV;
@@ -509,7 +547,8 @@ async function joinDealer(){
 }
 function leaveAll(){
   if(ST.view&&ST.view.phase!=='idle'&&!confirm('ゲーム進行中です。この画面を閉じますか？'))return;
-  localStorage.removeItem(LSK);location.href=location.pathname;
+  localStorage.removeItem(LSK);try{localStorage.removeItem('pokerchips_log_'+ST.code);}catch(e){}
+  location.href=location.pathname;
 }
 function showQr(){
   if(typeof qrcode!=='function')return;
@@ -549,6 +588,16 @@ function wakeUp(){
   if(ST.code)poll();else if(!wakeUp.tried)resumeSaved();
 }
 document.addEventListener('visibilitychange',wakeUp);
+/* テーブル画面（卓に置くiPad）は、遊んでいる間に画面が暗くなって消えないようにする（Wake Lock。対応していない機種では何もしない）。
+   画面をタップした時と、ほかのアプリから戻った時にお願いし直す */
+var WL=null;
+function keepAwake(){
+  if(!navigator.wakeLock||document.visibilityState!=='visible'||WL)return;
+  if($('table').style.display==='none')return;
+  navigator.wakeLock.request('screen').then(function(l){WL=l;l.addEventListener('release',function(){WL=null;});}).catch(function(){});
+}
+document.addEventListener('pointerdown',keepAwake);
+document.addEventListener('visibilitychange',keepAwake);
 window.addEventListener('pageshow',wakeUp);
 window.addEventListener('online',wakeUp);
 async function send(move){
@@ -823,7 +872,33 @@ function renderTable(V){
   }
   $('tCtrl').innerHTML=c;
   if(V.phase==='showdown')restorePotSel(V);
-  $('logBox').innerHTML=V.log.map(function(t){return '<div>'+esc(t)+'</div>';}).join('');
+  mergeLog(V);
+  $('logBox').innerHTML=V.log.slice(0,2).map(function(t){return '<div>'+esc(t)+'</div>';}).join('');
+  if($('mLog').classList.contains('open'))fillLog(V);
+}
+/* すべての記録：サーバーは新しい6件しか送ってこないので、テーブル画面（iPad）の側で受け取るたびに
+   ため続ける（卓ごとにlocalStorageへ保存＝読み直しても残る）。前回の記録と重なる所を探し、増えた分だけ足す。
+   画面を閉じている間に6件より多く進んだ分は取りこぼす */
+var LOGH={code:null,list:[]};
+function mergeLog(V){
+  var key='pokerchips_log_'+ST.code;
+  if(LOGH.code!==ST.code){LOGH.code=ST.code;LOGH.list=[];try{LOGH.list=JSON.parse(localStorage.getItem(key))||[];}catch(e){}}
+  var L=V.log||[],H=LOGH.list,d;
+  if(!H.length){d=L.length;}
+  else for(d=0;d<L.length;d++){
+    var ok=true;
+    for(var i=d;i<L.length&&i-d<H.length;i++){if(L[i]!==H[i-d]){ok=false;break;}}
+    if(ok)break;
+  }
+  if(d>0){LOGH.list=L.slice(0,d).concat(H).slice(0,3000);try{localStorage.setItem(key,JSON.stringify(LOGH.list));}catch(e){}}
+}
+/* ハンドの区切りの行は金色で目立たせる */
+function fillLog(V){
+  $('logAll').innerHTML=LOGH.list.map(function(t){return '<div'+(/ハンド#\d+ 開始/.test(t)?' class="hs"':'')+'>'+esc(t)+'</div>';}).join('')||'<div class="hint">まだ記録はありません</div>';
+}
+function openLog(){
+  if(!ST.view)return;
+  fillLog(ST.view);openM('mLog');$('logAll').scrollTop=0;
 }
 /* ショーダウンの手動勝者選択 */
 var potSel=[];
