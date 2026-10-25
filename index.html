@@ -115,6 +115,19 @@
   .badge.d{background:var(--gold);color:#3a2c05;}
   .badge.off{background:#5c2626;color:#ffb9b9;}
   .badge.ai{background:#7c3aed;color:#fff;}
+  /* ポジションのアイコン（D＝白いディーラーボタン・SB＝青・BB＝金のチップ風の丸） */
+  .posI{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;
+    font-size:12px;font-weight:900;letter-spacing:-.5px;flex:none;vertical-align:middle;
+    box-shadow:0 2px 4px rgba(0,0,0,.5),inset 0 0 0 2px rgba(255,255,255,.55),inset 0 0 0 4px rgba(0,0,0,.18);}
+  .posI.d{background:#fdfdf7;color:#222;font-size:14px;}
+  .posI.sb{background:#2f6fd6;color:#fff;}
+  .posI.bb{background:#e0b030;color:#3a2c05;}
+  .posIs{display:inline-flex;gap:3px;vertical-align:middle;}
+  /* ベット/レイズ額のかんたん選択（ポットの○倍・最低・オールイン） */
+  .potX{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px;}
+  .potX button{padding:10px 4px;line-height:1.25;font-size:15px;}
+  .potX button small{display:block;font-size:12px;opacity:.85;font-weight:normal;}
+  .potX button.sel{outline:2px solid var(--gold);background:#4a3c12;}
   .pl .ops{position:absolute;top:8px;right:8px;}
   .pl .ops button{padding:4px 10px;font-size:13px;background:rgba(255,255,255,.12);}
   #tCtrl{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:14px;}
@@ -286,6 +299,7 @@
       <div id="conn2" style="width:9px;height:9px;border-radius:50%;background:#3ddc84;flex:none;"></div>
       <span style="flex:1"></span>
       <span class="hint" id="pCode" style="white-space:nowrap;"></span>
+      <button class="ghost" id="sndBtnP" style="padding:6px 10px;font-size:13px;flex:none;" onclick="sndToggle()" title="番が来たときの音">🔊</button>
       <button class="ghost" style="padding:6px 12px;font-size:13px;flex:none;" onclick="leaveAll()">退出</button>
     </div>
     <div style="display:flex;gap:8px;margin-top:8px;">
@@ -354,11 +368,12 @@
 
 <!-- レイズモーダル（スマホ） -->
 <div class="modal" id="mRaise"><div class="mbox" style="max-width:420px;">
-  <h3>レイズ額（合計ベット額）</h3>
-  <input id="raiseTo" type="number" inputmode="numeric" style="font-size:24px;text-align:center;">
-  <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;" id="raisePresets"></div>
+  <h3 id="raiseTtl">レイズ額（合計ベット額）</h3>
+  <input id="raiseTo" type="number" inputmode="numeric" style="font-size:24px;text-align:center;" oninput="raiseMark()">
+  <div class="hint" id="raisePotTxt" style="margin-top:8px;"></div>
+  <div class="potX" id="raisePresets"></div>
   <div style="display:flex;gap:10px;margin-top:12px;">
-    <button class="gold" style="flex:1;" onclick="sendRaise()">レイズする</button>
+    <button class="gold" style="flex:1;" id="raiseGo" onclick="sendRaise()">レイズする</button>
     <button class="ghost" onclick="closeM('mRaise')">やめる</button>
   </div>
 </div></div>
@@ -584,7 +599,7 @@ function bSetMin(m){
 function bStart(){ closeM('mBlind'); send({type:'blind',op:'start',min:bMin}); }
 
 /* ---------- 効果音（チップのじゃらじゃら）：音のファイルは使わず、その場で合成する ----------
-   ブラウザは画面を一度タップするまで音を出せないので、最初のタップで準備する。テーブル画面だけで鳴らす。 */
+   ブラウザは画面を一度タップするまで音を出せないので、最初のタップで準備する。チップの音はテーブル画面だけ、スマホは自分の番の音（turnChime）だけ。 */
 var SND={ctx:null,on:true,noise:null};
 try{SND.on=localStorage.getItem('pokerchips_snd')!=='off';}catch(e){}
 function sndInit(){
@@ -610,7 +625,23 @@ function sndPlay(k,delay,rate){
   s.connect(SND.ctx.destination);s.start(SND.ctx.currentTime+(delay||0));
 }
 document.addEventListener('pointerdown',sndInit);
-function sndToggle(){SND.on=!SND.on;try{localStorage.setItem('pokerchips_snd',SND.on?'on':'off');}catch(e){}$('sndBtn').textContent=SND.on?'🔊':'🔇';if(SND.on)chips('call');}
+function sndToggle(){SND.on=!SND.on;try{localStorage.setItem('pokerchips_snd',SND.on?'on':'off');}catch(e){}
+  $('sndBtn').textContent=$('sndBtnP').textContent=SND.on?'🔊':'🔇';
+  if(SND.on){if(ST.role==='player'||$('phone').style.display!=='none')turnChime();else chips('call');}}
+/* スマホ用：自分の番が来たときの「ピンポーン」。チップの音とまちがえないよう、ベルのような2音にする */
+function turnChime(){
+  if(!SND.on||!SND.ctx||SND.ctx.state!=='running')return;
+  var c=SND.ctx,t=c.currentTime+0.02;
+  [[1318.5,0],[987.8,0.22]].forEach(function(n){
+    [[1,0.5],[2,0.12],[3,0.05]].forEach(function(h){   /* 基音＋倍音で金属っぽい響きに */
+      var o=c.createOscillator(),g=c.createGain(),st=t+n[1];
+      o.type='sine';o.frequency.value=n[0]*h[0];
+      g.gain.setValueAtTime(0.0001,st);g.gain.exponentialRampToValueAtTime(h[1],st+0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001,st+0.9/h[0]);
+      o.connect(g);g.connect(c.destination);o.start(st);o.stop(st+1);
+    });
+  });
+}
 /* チップ1枚が当たる「カチッ」。高めの音＝チップ同士、低めの音＝テーブルを叩く音 */
 function clack(t,freq,vol){
   var c=SND.ctx,s=c.createBufferSource(),f=c.createBiquadFilter(),g=c.createGain();
@@ -707,11 +738,6 @@ function renderTable(V){
     if(p.bet>0)bets+='<div class="betChip" style="'+pos(.56)+'"><img class="chip20" src="assets/chip_red.png" alt="" onerror="this.style.display=\'none\'">'+yen(p.bet)+'</div>';
     if(i===V.dealer&&V.phase!=='idle')bets+='<div class="dBtn" style="'+pos(.68,.32)+'">D</div>';
     var badges='';
-    if(i===V.dealer&&V.phase!=='idle')badges+='<span class="badge d">D</span>';
-    if(V.phase!=='idle'){
-      if(i===V.sbSeat)badges+='<span class="badge">SB</span>';
-      if(i===V.bbSeat)badges+='<span class="badge">BB</span>';
-    }
     if(p.allin)badges+='<span class="badge off">ALL IN</span>';
     if(p.folded)badges+='<span class="badge">フォールド</span>';
     if(!connectedOf(i))badges+='<span class="badge off">📶切断</span>';
@@ -723,7 +749,7 @@ function renderTable(V){
     }
     h+='<div class="pl'+(V.turn===i?' turn':'')+(p.folded?' folded':'')+'" style="'+pos(1)+'">'
       +'<div class="ops">'+ops+'</div>'
-      +'<div class="nm">'+esc(p.name)+' '+badges+'</div>'
+      +'<div class="nm">'+posIcons(V,i)+esc(p.name)+' '+badges+'</div>'
       +'<div class="stack"><img class="chip20" src="assets/chip_white.png" alt="" onerror="this.style.display=\'none\'">'+yen(p.stack)+'</div>'
       +'<div class="bet">'+(p.bet>0?'ベット中: '+yen(p.bet):'')+'</div>'
       +'</div>';
@@ -866,12 +892,24 @@ function sendJudge(){
   send({type:'judge',board:board,holes:holes});
 }
 
+/* 名前の前に置くポジションのアイコン（ハンド中だけ。ヘッズアップはDとSBが同じ人なので2つ並ぶ） */
+function posIcons(V,i,sb,bb){
+  if(V.phase==='idle')return '';
+  if(sb==null){sb=V.sbSeat;bb=V.bbSeat;}
+  var s='';
+  if(i===V.dealer)s+='<span class="posI d" title="ディーラー">D</span>';
+  if(i===sb)s+='<span class="posI sb" title="スモールブラインド">SB</span>';
+  if(i===bb)s+='<span class="posI bb" title="ビッグブラインド">BB</span>';
+  return s?'<span class="posIs">'+s+'</span> ':'';
+}
+
 /* ---------- スマホ描画 ---------- */
 function renderPhone(V){
   if(ST.you<0)return;
   var me=V.players[ST.you];if(!me)return;
   eqSync(V);
-  $('pName').textContent=me.name;
+  $('pName').innerHTML=posIcons(V,ST.you)+esc(me.name);
+  $('sndBtnP').textContent=SND.on?'🔊':'🔇';
   goldNum($('pStackV'),me.stack);
   var totalPot=V.pot+V.players.reduce(function(s,p){return s+p.bet;},0);
   var bi=V.blindInfo;
@@ -886,7 +924,10 @@ function renderPhone(V){
   else if(V.phase==='showdown')bar.textContent='🃏 ショーダウン！テーブル画面で分配中';
   else if(me.folded)bar.textContent='フォールド中…次のハンドまで待ってね';
   else if(me.allin)bar.textContent='🔥 オールイン！結果を待とう';
-  else if(myTurn){bar.textContent='あなたの番！';if(navigator.vibrate&&!renderPhone._v){navigator.vibrate(200);renderPhone._v=true;}}
+  else if(myTurn){bar.textContent='あなたの番！';
+    /* 番が回ってきた時と、続けて自分の番のままストリートが変わった時に1回だけ鳴らす */
+    var tk=V.handNo+'-'+V.street;
+    if(renderPhone._v!==tk){renderPhone._v=tk;turnChime();if(navigator.vibrate)navigator.vibrate(200);}}
   else{bar.textContent=(V.turn>=0?V.players[V.turn].name+' の番…':'…');renderPhone._v=false;}
   if(!myTurn)renderPhone._v=false;
   var h='';
@@ -894,7 +935,8 @@ function renderPhone(V){
     var tc=V.toCall||0;
     if(tc<=0)h+='<button class="gold" onclick="send({type:\'check\'})">✋ チェック</button>';
     else h+='<button class="gold" onclick="send({type:\'call\'})">📞 コール '+yen(tc)+'</button>';
-    h+='<button onclick="openRaise()">📢 レイズ</button>';
+    /* このストリートでまだ誰も賭けていなければ「ベット」、賭けがあれば「レイズ」 */
+    h+='<button onclick="openRaise()">'+(V.currentBet>0?'📢 レイズ':'💰 ベット')+'</button>';
     h+='<button class="red" onclick="if(confirm(\'フォールドしますか？\'))send({type:\'fold\'})">🙅 フォールド</button>';
     h+='<button class="red" onclick="if(confirm(\'オールイン！本当に？\'))send({type:\'allin\'})">🔥 オールイン</button>';
   }
@@ -941,22 +983,38 @@ function renderDealer(V){
   $('dInfo').innerHTML='<div class="b">ハンド<b>#'+V.handNo+'</b></div><div class="b">状況<b>'+stName+'</b></div><div class="b">ポット合計<b>'+yen(totalPot)+'</b></div><div class="b">ブラインド<b>'+yen(V.sb)+' / '+yen(V.bb)+'</b></div>'
     +(V.blindInfo?'<div class="b">⏱ Lv'+V.blindInfo.level+(V.blindInfo.nextBb!=null?' 次まで':'')+'<b class="bTimer">'+bTimerTxt(V.blindInfo)+'</b></div>':'');
   $('dSeats').innerHTML=P.map(function(p,i){
-    var badges='';if(i===D)badges+='<span class="badge d">D</span>';if(i===sbS&&V.phase!=='idle')badges+='<span class="badge">SB</span>';if(i===bbS&&V.phase!=='idle')badges+='<span class="badge">BB</span>';
+    var badges='';
     if(p.out)badges+='<span class="badge off">退席</span>';else if(!connectedOf(i))badges+='<span class="badge off">通信なし</span>';
     var state=p.folded?'フォールド':(p.allin?'オールイン':'');
-    return '<div class="ds'+(V.phase==='hand'&&V.turn===i?' turn':'')+(p.folded||p.out?' folded':'')+'"><span class="nm">'+esc(p.name)+' '+badges+'</span><span class="hint">'+state+'</span><span class="bt">'+(p.bet>0?'ベット '+yen(p.bet):'')+'</span><span class="st">'+yen(p.stack)+'</span></div>';
+    return '<div class="ds'+(V.phase==='hand'&&V.turn===i?' turn':'')+(p.folded||p.out?' folded':'')+'"><span class="nm">'+posIcons(V,i,sbS,bbS)+esc(p.name)+' '+badges+'</span><span class="hint">'+state+'</span><span class="bt">'+(p.bet>0?'ベット '+yen(p.bet):'')+'</span><span class="st">'+yen(p.stack)+'</span></div>';
   }).join('');
 }
 function openRaise(){
   var V=ST.view,me=V.players[ST.you];
   var minTo=V.currentBet+V.minRaise, maxTo=me.bet+me.stack;
   var totalPot=V.pot+V.players.reduce(function(s,p){return s+p.bet;},0);
-  $('raiseTo').value=Math.min(minTo,maxTo);
-  var pres=[['最低 '+yen(Math.min(minTo,maxTo)),Math.min(minTo,maxTo)],
-            ['ポット '+yen(Math.min(totalPot+V.currentBet,maxTo)),Math.min(totalPot+V.currentBet,maxTo)],
-            ['オールイン '+yen(maxTo),maxTo]];
-  $('raisePresets').innerHTML=pres.map(function(p){return '<button class="ghost" onclick="$(\'raiseTo\').value='+p[1]+'">'+p[0]+'</button>';}).join('');
+  var isBet=!(V.currentBet>0),word=isBet?'ベット':'レイズ';
+  var lo=Math.min(minTo,maxTo);
+  /* ポットの○倍：コールした後のポット（＝いまのポット＋自分のコール額）の○倍だけ上乗せする。
+     まだ誰も賭けていなければ、そのままポットの○倍を賭ける。最低額〜オールインの範囲におさめる */
+  var tc=Math.max(0,V.currentBet-me.bet),base=totalPot+tc;
+  var pres=[['最低',lo]];
+  [1,2,3].forEach(function(k){pres.push(['ポット×'+k.toFixed(1),Math.max(lo,Math.min(V.currentBet+k*base,maxTo))]);});
+  pres.push(['オールイン',maxTo]);
+  $('raiseTtl').textContent=word+'額（合計ベット額）';
+  $('raiseGo').textContent=word+'する';
+  $('raisePotTxt').textContent='いまのポット '+yen(totalPot)+(tc>0?'（コールに '+yen(tc)+' 必要）':'');
+  $('raisePresets').innerHTML=pres.map(function(p){
+    return '<button class="ghost" data-v="'+p[1]+'" onclick="$(\'raiseTo\').value='+p[1]+';raiseMark()">'+p[0]
+      +'<small>'+(p[1]>=maxTo&&p[0]!=='オールイン'?'オールイン ':'')+yen(p[1])+'</small></button>';
+  }).join('');
+  $('raiseTo').value=lo;raiseMark();
   $('mRaise').classList.add('open');
+}
+/* 入力欄の額と同じボタンを光らせる */
+function raiseMark(){
+  var v=Math.floor(+$('raiseTo').value||0);
+  document.querySelectorAll('#raisePresets button').forEach(function(b){b.classList.toggle('sel',+b.dataset.v===v);});
 }
 function sendRaise(){
   closeM('mRaise');
