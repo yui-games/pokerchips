@@ -457,8 +457,12 @@ function saveST(){try{localStorage.setItem(LSK,JSON.stringify({srv:ST.srv,code:S
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function yen(n){return (+n||0).toLocaleString('ja-JP');}
 async function api(path,method,body,qs){
-  var r=await fetch(ST.srv.replace(/\/+$/,'')+path+(qs||''),{method:method||'GET',
-    headers:{'content-type':'application/json'},body:body?JSON.stringify(body):undefined});
+  /* 8秒で打ち切る：スマホが他のアプリに切り替わった瞬間の通信は、戻っても返事が来ないまま固まることがある */
+  var ac=window.AbortController?new AbortController():null,to=ac?setTimeout(function(){ac.abort();},8000):0;
+  try{
+    var r=await fetch(ST.srv.replace(/\/+$/,'')+path+(qs||''),{method:method||'GET',
+      headers:{'content-type':'application/json'},body:body?JSON.stringify(body):undefined,signal:ac?ac.signal:undefined});
+  }finally{clearTimeout(to);}
   var j=null;try{j=await r.json();}catch(e){}
   if(!j)throw new Error('サーバーの応答が読めませんでした');
   return j;
@@ -521,19 +525,32 @@ function closeM(id){$(id).classList.remove('open');}
 function openM(id){$(id).classList.add('open');}
 
 /* ---------- ポーリング ---------- */
-var timer=null,fail=0;
+var timer=null,fail=0,pollSeq=0;
 async function poll(){
   if(timer)clearTimeout(timer);
+  if(!ST.code)return;
+  var my=++pollSeq;   /* 古い問い合わせの返事が遅れて来ても、二重に回り始めないようにする */
   try{
     var j=await api('/api/room/'+ST.code+'/state','GET',null,'?playerId='+ST.pid);
+    if(my!==pollSeq)return;
     fail=0;$('conn').className='';$('conn2').style.background='#3ddc84';$('conn3').style.background='#3ddc84';
     ST.room=j.room;ST.view=j.view;ST.bRecv=Date.now();ST.you=j.you;ST.isHost=j.isHost;
     render();
   }catch(e){
+    if(my!==pollSeq)return;
     fail++;if(fail>1){$('conn').className='bad';$('conn2').style.background='#f2554b';$('conn3').style.background='#f2554b';}
   }
   timer=setTimeout(poll,1200);
 }
+/* 他のアプリから戻った・画面がついた・電波が戻ったときは、待たずにすぐ最新にする */
+function wakeUp(){
+  if(document.visibilityState==='hidden')return;
+  if(SND.ctx&&SND.ctx.state==='suspended')SND.ctx.resume().catch(function(){});
+  if(ST.code)poll();else if(!wakeUp.tried)resumeSaved();
+}
+document.addEventListener('visibilitychange',wakeUp);
+window.addEventListener('pageshow',wakeUp);
+window.addEventListener('online',wakeUp);
 async function send(move){
   if(ST.busy)return;ST.busy=true;
   try{
@@ -966,6 +983,8 @@ function placePosBtns(V,seatPos){
 }
 
 /* ---------- スマホ描画 ---------- */
+var PH_LOCK={until:0,ms:1500,t:0,name:''};
+var STREET_JP=['プリフロップ','フロップ','ターン','リバー'];
 function renderPhone(V){
   if(ST.you<0)return;
   var me=V.players[ST.you];if(!me)return;
@@ -980,9 +999,20 @@ function renderPhone(V){
     +(bi&&bi.bb!==V.bb?'<br>⏫ 次のハンドから SB'+yen(bi.sb)+'・BB'+yen(bi.bb):'')
     +(me.bet>0?'<br>あなたのベット中: '+yen(me.bet):'');
   var bar=$('pTurnBar'),myTurn=(V.phase==='hand'&&V.turn===ST.you);
+  /* 段階が変わった直後（フロップ→ターン等・新しいハンド）は少しの間ボタンを押せなくする。
+     前の段階で連打した指が、次の段階のボタンをそのまま押してしまう誤操作を防ぐ。音もこの間は鳴らさず、解けてから鳴らす */
+  var stKey=V.handNo+'-'+V.street,now=Date.now();
+  if(V.phase==='hand'&&renderPhone._st&&renderPhone._st!==stKey){
+    PH_LOCK.until=now+PH_LOCK.ms;PH_LOCK.name=STREET_JP[V.street]||'次の段階';
+    closeM('mRaise');
+    clearTimeout(PH_LOCK.t);PH_LOCK.t=setTimeout(function(){if(ST.view)render();},PH_LOCK.ms+30);
+  }
+  renderPhone._st=stKey;
+  var locked=V.phase==='hand'&&now<PH_LOCK.until;
   bar.className=myTurn?'my':'';
   bar.id='pTurnBar';
-  if(V.phase==='idle')bar.textContent=V.lastResult?V.lastResult.text:'ハンド開始を待っています…';
+  if(locked){bar.className='';bar.textContent='🃏 '+PH_LOCK.name+'へ進みます…';}
+  else if(V.phase==='idle')bar.textContent=V.lastResult?V.lastResult.text:'ハンド開始を待っています…';
   else if(V.phase==='showdown')bar.textContent='🃏 ショーダウン！テーブル画面で分配中';
   else if(me.folded)bar.textContent='フォールド中…次のハンドまで待ってね';
   else if(me.allin)bar.textContent='🔥 オールイン！結果を待とう';
@@ -993,7 +1023,9 @@ function renderPhone(V){
   else{bar.textContent=(V.turn>=0?V.players[V.turn].name+' の番…':'…');renderPhone._v=false;}
   if(!myTurn)renderPhone._v=false;
   var h='';
-  if(myTurn){
+  if(locked&&myTurn){
+    h='<div class="hint" style="grid-column:1/-1;text-align:center;padding:14px 0;">少し待ってね…（押しまちがい防止）</div>';
+  }else if(myTurn){
     var tc=V.toCall||0;
     if(tc<=0)h+='<button class="gold" onclick="send({type:\'check\'})">✋ チェック</button>';
     else h+='<button class="gold" onclick="send({type:\'call\'})">📞 コール '+yen(tc)+'</button>';
@@ -1285,19 +1317,28 @@ function eqStart(){
   $('inSrv').value=q.get('s')||saved.srv||DEFAULT_SRV;
   if(joinCode){$('inCode').value=joinCode;$('inCodeD').value=joinCode;}
   $('inName').value=joinCode?'':(saved.nm||'');
-  if(saved.srv&&saved.code&&saved.pid&&(!joinCode||joinCode===saved.code)){
-    ST.srv=saved.srv;ST.code=saved.code;ST.pid=saved.pid;
-    /* 役割はstateのisHostで判定して復帰 */
-    api('/api/room/'+ST.code+'/state','GET',null,'?playerId='+ST.pid).then(function(j){
-      if(!j.ok||!j.view){localStorage.removeItem(LSK);return;}
-      ST.isHost=j.isHost;ST.you=j.you;ST.room=j.room;ST.view=j.view;ST.role=(saved.role==='dealer')?'dealer':'';
-      if(ST.role==='dealer'){show('dealer');$('dCode').textContent='卓 '+ST.code;}
-      else if(j.isHost){show('table');$('tCode').textContent=ST.code;}
-      else{show('phone');$('pCode').textContent='卓 '+ST.code;}
-      render();poll();
-    }).catch(function(){});
-  }
+  if(!joinCode||joinCode===saved.code)resumeSaved();
 })();
+/* 前に入っていた卓へ戻る（画面が落ちた・ページが読み直された時）。役割はstateのisHostで判定する。
+   電波が悪くて失敗したときは、卓の情報を消さずに3秒ごとにやり直す（卓が無くなっていた時だけ消す） */
+function resumeSaved(){
+  var saved={};try{saved=JSON.parse(localStorage.getItem(LSK))||{};}catch(e){}
+  if(!(saved.srv&&saved.code&&saved.pid))return;
+  wakeUp.tried=true;
+  ST.srv=saved.srv;
+  api('/api/room/'+saved.code+'/state','GET',null,'?playerId='+saved.pid).then(function(j){
+    if(!j.ok||!j.view){localStorage.removeItem(LSK);return;}
+    ST.code=saved.code;ST.pid=saved.pid;$('lobbyErr').textContent='';
+    ST.isHost=j.isHost;ST.you=j.you;ST.room=j.room;ST.view=j.view;ST.role=(saved.role==='dealer')?'dealer':'';
+    if(ST.role==='dealer'){show('dealer');$('dCode').textContent='卓 '+ST.code;}
+    else if(j.isHost){show('table');$('tCode').textContent=ST.code;}
+    else{show('phone');$('pCode').textContent='卓 '+ST.code;}
+    render();poll();
+  }).catch(function(){
+    $('lobbyErr').textContent='前の卓に戻ろうとしています…（電波を確認してください）';
+    setTimeout(function(){if(!ST.code)resumeSaved();},3000);
+  });
+}
 </script>
 </body>
 </html>
