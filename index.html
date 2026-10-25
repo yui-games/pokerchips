@@ -655,6 +655,19 @@ function turnChime(){
     });
   });
 }
+/* ブラインドアップの「テッテレー↑」：ゲームのレベルアップ風。駆け上がる4音＋最後に和音をのばす */
+function levelUp(){
+  var c=SND.ctx,t=c.currentTime+0.03;
+  var tone=function(f,st,len,vol,type){
+    var o=c.createOscillator(),g=c.createGain();o.type=type||'square';o.frequency.value=f;
+    g.gain.setValueAtTime(0.0001,st);g.gain.exponentialRampToValueAtTime(vol,st+0.012);
+    g.gain.setValueAtTime(vol,st+len*0.6);g.gain.exponentialRampToValueAtTime(0.0001,st+len);
+    o.connect(g);g.connect(c.destination);o.start(st);o.stop(st+len+0.02);
+  };
+  [523.3,659.3,784,1046.5].forEach(function(f,i){tone(f,t+i*0.085,0.11,0.09);});   /* ド・ミ・ソ・ド */
+  var e=t+4*0.085+0.03;
+  [1046.5,1318.5,1568].forEach(function(f){tone(f,e,0.75,0.06);tone(f/2,e,0.75,0.05,'triangle');});
+}
 /* チップ1枚が当たる「カチッ」。高めの音＝チップ同士、低めの音＝テーブルを叩く音 */
 function clack(t,freq,vol){
   var c=SND.ctx,s=c.createBufferSource(),f=c.createBiquadFilter(),g=c.createGain();
@@ -665,6 +678,7 @@ function clack(t,freq,vol){
 function chips(kind){
   if(!SND.on||!SND.ctx||SND.ctx.state!=='running')return;
   /* レイズはコールと同じ「チップを置く音」を少しずらして2回＝置く枚数が多い感じに */
+  if(kind==='levelup'){levelUp();return;}
   if(kind==='raise'&&SND.buf.call){sndPlay('call');sndPlay('call',0.12,1.07);return;}
   if(SND.buf[kind]){sndPlay(kind);return;}
   var t=SND.ctx.currentTime+0.02,n,spread,lo=2600,hi=5200,vol=0.9;
@@ -694,7 +708,7 @@ function flashKind(t){
   if(e==='✋')return {c:'small',s:'check',img:'check'};
   if(e==='🙅')return {c:'small fold',s:'',img:'fold'};
   if(e==='💀')return {c:'small bust',s:'',m:rest.replace(/（.*$/,'')};
-  if(e==='⏫')return {c:'raise',s:'',img:'blindup'};
+  if(e==='⏫')return {c:'raise',s:'levelup',img:'blindup'};
   if(e==='▶'&&rest.indexOf('めくって')>=0)return {c:'small',s:'',m:rest.split('：')[0]};
   if(e==='🃏'&&rest.indexOf('ハンド#')===0)return {c:'small',s:'',m:rest.replace(/（.*$/,''),img:'newhand'};
   return null;
@@ -1043,11 +1057,11 @@ function openRaise(){
   var totalPot=V.pot+V.players.reduce(function(s,p){return s+p.bet;},0);
   var isBet=!(V.currentBet>0),word=isBet?'ベット':'レイズ';
   var lo=Math.min(minTo,maxTo);
-  /* ポットの○倍：コールした後のポット（＝いまのポット＋自分のコール額）の○倍だけ上乗せする。
-     まだ誰も賭けていなければ、そのままポットの○倍を賭ける。最低額〜オールインの範囲におさめる */
-  var tc=Math.max(0,V.currentBet-me.bet),base=totalPot+tc;
+  /* ポットの○倍：見たままの計算（いまのポット×○＝合計ベット額）。初心者向けに、ポーカーの
+     「ポットサイズレイズ」の数え方ではなくこちらにした（2026-10-25本人決定）。最低額〜オールインにおさめる */
+  var tc=Math.max(0,V.currentBet-me.bet);
   var pres=[['最低',lo]];
-  [1,2,3].forEach(function(k){pres.push(['ポット×'+k.toFixed(1),Math.max(lo,Math.min(V.currentBet+k*base,maxTo))]);});
+  [1,2,3].forEach(function(k){pres.push(['ポット×'+k.toFixed(1),Math.max(lo,Math.min(k*totalPot,maxTo))]);});
   pres.push(['オールイン',maxTo]);
   $('raiseTtl').textContent=word+'額（合計ベット額）';
   $('raiseGo').textContent=word+'する';
