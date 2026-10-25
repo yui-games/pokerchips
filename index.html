@@ -4,6 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#0d3321">
+<!-- iPad/iPhoneで「ホーム画面に追加」して開くと、Safariのアドレス欄やタブのない全画面で開く -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="ポーカーチップ">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <title>ポーカーチップテーブル</title>
 <style>
   :root{ --felt:#0d3321; --felt2:#124a30; --line:#2c6e4a; --gold:#e8c66a; --red:#ff6b6b; --txt:#f2f7f2; --dim:#9fc4ad; }
@@ -157,7 +163,7 @@
     body.scr-table .wrap{max-width:none;padding:0;}
     #table{height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden;padding:8px 12px 6px;}
     #tHead{flex:none;margin-bottom:2px;gap:8px;flex-wrap:nowrap;}
-    #tHead button{padding:8px 14px;}
+    #tHead button{padding:8px 14px;white-space:nowrap;}
     #tBlindBar{flex-wrap:nowrap;gap:8px;}
     #tBlindBar .bInfo{padding:3px 12px;font-size:15px;gap:10px;flex-wrap:nowrap;white-space:nowrap;}
     #tBlindBar .bTimer{font-size:24px;}
@@ -315,6 +321,7 @@
     <!-- ブラインドの表示は見出しの行のまん中に置く（横長の画面で縦の場所を節約。狭いと次の行に回る） -->
     <div id="tBlindBar"></div>
     <span class="hint" id="tBlinds"></span>
+    <button class="ghost" id="fsBtn" onclick="toggleFs()" title="Safariの枠を消して全画面にする" style="display:none;">⛶ 全画面</button>
     <button class="ghost" id="sndBtn" onclick="sndToggle()" title="効果音">🔊</button>
     <button class="ghost" onclick="leaveAll()">終了</button>
   </div>
@@ -597,6 +604,23 @@ function keepAwake(){
   navigator.wakeLock.request('screen').then(function(l){WL=l;l.addEventListener('release',function(){WL=null;});}).catch(function(){});
 }
 document.addEventListener('pointerdown',keepAwake);
+/* ⛶ 全画面（テーブル画面）：iPadのSafariやPCではアドレス欄やタブを消せる。iPhoneのSafariはできないのでボタンを出さない。
+   ホーム画面から開いた時はもともと全画面なので出さない */
+function fsEl(){return document.fullscreenElement||document.webkitFullscreenElement;}
+function fsUpdate(){
+  var de=document.documentElement,can=!!(de.requestFullscreen||de.webkitRequestFullscreen)&&(document.fullscreenEnabled||document.webkitFullscreenEnabled);
+  var standalone=navigator.standalone||(window.matchMedia&&matchMedia('(display-mode: standalone)').matches);
+  $('fsBtn').style.display=(can&&!standalone)?'':'none';
+  $('fsBtn').textContent=fsEl()?'⛶ 全画面をやめる':'⛶ 全画面';
+}
+function toggleFs(){
+  var de=document.documentElement;
+  if(fsEl()){(document.exitFullscreen||document.webkitExitFullscreen).call(document);}
+  else{var p=(de.requestFullscreen||de.webkitRequestFullscreen).call(de);if(p&&p.catch)p.catch(function(){toast('この端末では全画面にできませんでした');});}
+}
+document.addEventListener('fullscreenchange',fsUpdate);
+document.addEventListener('webkitfullscreenchange',fsUpdate);
+fsUpdate();
 document.addEventListener('visibilitychange',keepAwake);
 window.addEventListener('pageshow',wakeUp);
 window.addEventListener('online',wakeUp);
