@@ -72,7 +72,18 @@
   #felt .pl .ops{top:-15px;right:6px;}   /* 楕円では名前と重ならないよう、操作ボタンはカードの上のふちに乗せる */
   #felt .pl .ops button{padding:3px 10px;background:#24563c;}
   .betChip{position:absolute;transform:translate(-50%,-50%);z-index:2;background:rgba(0,0,0,.45);border-radius:99px;padding:3px 12px 3px 6px;font-size:18px;font-weight:900;color:var(--gold);white-space:nowrap;display:flex;align-items:center;}
-  .dBtn{position:absolute;transform:translate(-50%,-50%);z-index:2;width:30px;height:30px;border-radius:50%;background:#fff;color:#222;font-weight:900;font-size:16px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.6);}
+  /* 卓の上のポジションのボタン（D・SB・BB＝色つきの丸、UTG・HJ・COなど＝灰色の小さな札）。
+     要素を作り直さずに位置だけ変えるので、ハンドが変わると次の席へスーッと動く */
+  .tBtn{position:absolute;transform:translate(-50%,-50%);z-index:2;display:flex;align-items:center;justify-content:center;
+    font-weight:900;transition:left .9s ease-in-out,top .9s ease-in-out,opacity .4s;white-space:nowrap;}
+  .tBtn.big{width:34px;height:34px;border-radius:50%;font-size:12px;letter-spacing:-.5px;
+    box-shadow:0 2px 6px rgba(0,0,0,.6),inset 0 0 0 2px rgba(255,255,255,.55),inset 0 0 0 4px rgba(0,0,0,.18);}
+  .tBtn.d{background:#fdfdf7;color:#222;font-size:17px;}
+  .tBtn.sb{background:#2f6fd6;color:#fff;}
+  .tBtn.bb{background:#e0b030;color:#3a2c05;}
+  .tBtn.sm{height:22px;padding:0 8px;border-radius:99px;font-size:11px;background:rgba(20,30,25,.75);color:#cfd8d2;border:1px solid rgba(255,255,255,.25);}
+  .tBtn.hide{opacity:0;pointer-events:none;}
+  #felt .pl .posIs{display:none;}   /* 楕円の卓では卓上のボタンで見せるので、名前の横には出さない */
   /* 中央の大きな演出（レイズ・オールイン・勝ちなど） */
   #flash{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:5;pointer-events:none;text-align:center;}
   #flash .fl{background:rgba(3,16,9,.88);border:3px solid var(--line);border-radius:22px;padding:14px 34px;animation:flashIn 1.6s ease forwards;width:max-content;max-width:min(80vw,760px);}
@@ -98,7 +109,8 @@
   /* 画面が狭いとき（スマホでテーブル画面を開いた等）は、楕円をやめて今までのカード並びに戻す */
   @media (max-width:760px){
     #felt{height:auto;}
-    #felt::before,.betChip,.dBtn{display:none;}
+    #felt::before,.betChip,#posBtns{display:none;}
+    #felt .pl .posIs{display:inline-flex;}   /* 狭い画面は卓の絵がないので、名前の横にD/SB/BBを出す */
     #feltCenter{position:static;transform:none;width:auto;}
     #plGrid{position:static;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-top:8px;}
     .pl{position:relative;width:auto;transform:none;left:auto!important;top:auto!important;}
@@ -285,6 +297,7 @@
       <div id="resultBox"></div>
     </div>
     <div id="plGrid"></div>
+    <div id="posBtns"></div>
     <div id="flash"></div>
   </div>
   <div id="tCtrl"></div>
@@ -726,7 +739,7 @@ function renderTable(V){
   /* プレイヤー */
   var h='',bets='';
   /* 席の位置：0番の席を下の真ん中に置き、座った順に時計回り（画面の左回り）で楕円のふちに並べる */
-  var N=V.players.length;
+  var N=V.players.length,seatPos={};
   V.players.forEach(function(p,i){
     if(p.out)return;
     var ang=Math.PI/2+i*2*Math.PI/Math.max(N,2),cx=Math.cos(ang),cy=Math.sin(ang);
@@ -736,7 +749,7 @@ function renderTable(V){
       var ex=(c<0?-1:1)*Math.pow(Math.abs(c),2/3),ey=(s<0?-1:1)*Math.pow(Math.abs(s),2/3);
       return 'left:clamp(var(--hw),'+(50+44*f*ex)+'%,calc(100% - var(--hw)));top:'+(50+41*f*ey)+'%;';};
     if(p.bet>0)bets+='<div class="betChip" style="'+pos(.56)+'"><img class="chip20" src="assets/chip_red.png" alt="" onerror="this.style.display=\'none\'">'+yen(p.bet)+'</div>';
-    if(i===V.dealer&&V.phase!=='idle')bets+='<div class="dBtn" style="'+pos(.68,.32)+'">D</div>';
+    seatPos[i]=pos;
     var badges='';
     if(p.allin)badges+='<span class="badge off">ALL IN</span>';
     if(p.folded)badges+='<span class="badge">フォールド</span>';
@@ -755,6 +768,7 @@ function renderTable(V){
       +'</div>';
   });
   $('plGrid').innerHTML=h+bets;
+  placePosBtns(V,seatPos);
   flashCheck(V);
   /* 結果表示 */
   var rb='';
@@ -901,6 +915,40 @@ function posIcons(V,i,sb,bb){
   if(i===sb)s+='<span class="posI sb" title="スモールブラインド">SB</span>';
   if(i===bb)s+='<span class="posI bb" title="ビッグブラインド">BB</span>';
   return s?'<span class="posIs">'+s+'</span> ':'';
+}
+
+/* ハンド中の席ごとのポジション名。D→SB→BBのあと、BBの次から順に UTG…、Dの手前がCO */
+function posNames(V){
+  var m={};if(V.phase==='idle'||V.dealer<0)return m;
+  var sb=V.sbSeat,bb=V.bbSeat;
+  m[V.dealer]=['D'];
+  if(sb>=0)(m[sb]=m[sb]||[]).push('SB');
+  if(bb>=0)(m[bb]=m[bb]||[]).push('BB');
+  var rest=[],s=nextInHand(V,bb);
+  while(s>=0&&s!==V.dealer&&s!==sb&&s!==bb&&rest.length<10){rest.push(s);s=nextInHand(V,s);}
+  var L={1:['UTG'],2:['UTG','CO'],3:['UTG','HJ','CO'],4:['UTG','MP','HJ','CO'],5:['UTG','UTG+1','MP','HJ','CO'],6:['UTG','UTG+1','UTG+2','MP','HJ','CO']}[rest.length]||[];
+  rest.forEach(function(seat,k){if(L[k])m[seat]=[L[k]];});
+  return m;
+}
+var POS_TIP={D:'ディーラー（ボタン）。いちばん最後に動ける有利な席',SB:'スモールブラインド',BB:'ビッグブラインド',UTG:'BBの次。プリフロップで最初に動く席',
+  'UTG+1':'UTGの次','UTG+2':'UTG+1の次',MP:'まん中の席',HJ:'ハイジャック（COの1つ前）',CO:'カットオフ（Dの1つ前）'};
+/* 卓の上にボタンを置く。同じラベルの要素を使い回すので、席が変わると動いて見える */
+function placePosBtns(V,seatPos){
+  var box=$('posBtns'),m=posNames(V),used={};
+  Object.keys(m).forEach(function(seat){
+    var labs=m[seat];
+    labs.forEach(function(lab,k){
+      if(!seatPos[seat])return;
+      var el=box.querySelector('[data-p="'+lab+'"]');
+      if(!el){el=document.createElement('div');el.dataset.p=lab;el.textContent=lab;el.title=POS_TIP[lab]||lab;
+        var big=(lab==='D'||lab==='SB'||lab==='BB');
+        el.className='tBtn hide '+(big?'big '+lab.toLowerCase():'sm');box.appendChild(el);}
+      /* 席の前（少し次の席寄り）に置く。DとSBが同じ人（2人だけ）のときはSBを反対側に */
+      el.setAttribute('style',seatPos[seat](.72,k?-.17:.17));
+      el.classList.remove('hide');used[lab]=1;
+    });
+  });
+  box.querySelectorAll('.tBtn').forEach(function(el){if(!used[el.dataset.p])el.classList.add('hide');});
 }
 
 /* ---------- スマホ描画 ---------- */
