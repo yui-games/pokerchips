@@ -48,10 +48,13 @@ function removePlayer(T,seat){
   p.out=true; p.stack=0; log(T,'🚪 '+p.name+' が退席');
   return {ok:true};
 }
+/* 席を動かせるのは、最初のハンドの前と、本番スタートを押してから次のハンドを始めるまで */
+function canMoveSeats(T){ return T.handNo===0||!!T.setup; }
 /* 席の入れ替え：アプリの席順を実際の座り方に合わせる。人（名前・チップ）が入れ替わり、ボタン（D）の位置はそのまま。
    部屋サーバー側も、各スマホがどの席かを swap に合わせて付け替える。 */
 function swapSeats(T,a,b){
   if(T.phase!=='idle')return {error:'ハンドの合間に行ってください'};
+  if(!canMoveSeats(T))return {error:'ゲームが始まったので席は動かせません'};
   a=Math.floor(+a); b=Math.floor(+b);
   if(!(a>=0&&b>=0&&a<T.players.length&&b<T.players.length)||a===b)return {error:'席を選び直してください'};
   const t=T.players[a]; T.players[a]=T.players[b]; T.players[b]=t;
@@ -71,7 +74,7 @@ function resetGame(T,a){
   const seats=T.players.filter(p=>!p.out);
   if(seats.length<2)return {error:'席にいる人が2人以上必要です'};
   seats.forEach(p=>{ p.stack=st; p.bet=0; p.cont=0; p.folded=false; p.allin=false; p.acted=false; p.inHand=false; });
-  T.initStack=st; T.sb=sb; T.bb=bb; T.blind=null; T.btnDraw=null; T.lastResult=null; T.dealer=-1;
+  T.initStack=st; T.sb=sb; T.bb=bb; T.setup=true; T.blind=null; T.btnDraw=null; T.lastResult=null; T.dealer=-1;
   log(T,'🏁 本番スタート！ 全員のチップを '+st.toLocaleString()+' に（SB '+sb.toLocaleString()+' / BB '+bb.toLocaleString()+'）');
   return {ok:true};
 }
@@ -169,6 +172,7 @@ function startHand(T){
   const el=eligible(T);
   if(el.length<2)return {error:'チップを持つプレイヤーが2人以上必要です'};
   applyBlindLevel(T,Date.now());
+  T.setup=false;
   T.handNo++; T.phase='hand'; T.street=0; T.pot=0; T.currentBet=0; T.showdown=null; T.lastResult=null;
   T.players.forEach(p=>{p.bet=0;p.cont=0;p.folded=false;p.allin=false;p.acted=false;p.inHand=false;});
   el.forEach(i=>{T.players[i].inHand=true;});

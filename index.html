@@ -75,6 +75,9 @@
   .pl.turn{border-color:var(--gold);box-shadow:0 0 16px rgba(232,198,106,.55);animation:turnGlow 1.3s ease-in-out infinite;}
   @keyframes turnGlow{50%{box-shadow:0 0 30px rgba(232,198,106,.95);}}
   .pl .bet{display:none;}
+  .pl .mv{position:absolute;z-index:4;width:34px;height:34px;padding:0;border-radius:50%;font-size:15px;background:#c99a2e;color:#1b1206;border:2px solid #ffe08a;box-shadow:0 2px 6px rgba(0,0,0,.5);}
+  .pl .mvL{left:-20px;top:50%;transform:translateY(-50%);} .pl .mvR{right:-20px;top:50%;transform:translateY(-50%);}
+  .pl .mvU{top:-20px;left:50%;transform:translateX(-50%);} .pl .mvD{bottom:-20px;left:50%;transform:translateX(-50%);}
   .dealerSpot{position:absolute;left:50%;top:9%;transform:translate(-50%,-50%);z-index:2;background:rgba(4,20,12,.7);border:2px dashed var(--gold);color:var(--gold);border-radius:14px;padding:6px 18px;font-size:17px;font-weight:bold;white-space:nowrap;}
   #felt .pl .ops{top:-15px;right:6px;}   /* 楕円では名前と重ならないよう、操作ボタンはカードの上のふちに乗せる */
   #felt .pl .ops button{padding:3px 10px;background:#24563c;}
@@ -116,7 +119,7 @@
   /* 画面が狭いとき（スマホでテーブル画面を開いた等）は、楕円をやめて今までのカード並びに戻す */
   @media (max-width:760px){
     #felt{height:auto;}
-    #felt::before,.betChip,#posBtns,.dealerSpot{display:none;}
+    #felt::before,.betChip,#posBtns,.dealerSpot,.pl .mv{display:none;}
     #felt .pl .posIs{display:inline-flex;}   /* 狭い画面は卓の絵がないので、名前の横にD/SB/BBを出す */
     #feltCenter{position:static;transform:none;width:auto;}
     #plGrid{position:static;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-top:8px;}
@@ -901,7 +904,7 @@ function renderTable(V){
   var h='',bets='';
   /* 席の位置：画面の上のまん中＝カードを配るディーラーの場所（固定）。0番の席をディーラーの左どなり（画面の右上）に置き、
      座った順に時計回り（上→右→下→左）で楕円のふちに並べる＝iPadの上側をディーラーに向けて置けば実際の卓と同じ並び */
-  var N=V.players.length,seatPos={};
+  var N=V.players.length,seatPos={},canMove=V.phase==='idle'&&(V.handNo===0||!!V.setup);
   V.players.forEach(function(p,i){
     if(p.out)return;
     var ang=-Math.PI/2+(i+1)*2*Math.PI/(N+1),cx=Math.cos(ang),cy=Math.sin(ang);
@@ -917,14 +920,15 @@ function renderTable(V){
     if(p.folded)badges+='<span class="badge">フォールド</span>';
     if(!connectedOf(i))badges+='<span class="badge off">📶切断</span>';
     var ops='';
-    if(V.phase!=='idle')SWAP_SEL=-1;
+    var mv='';
     if(V.phase==='idle'){
-      ops='<button onclick="hostSwap('+i+')"'+(SWAP_SEL===i?' class="gold"':'')+' title="席を入れ替える">🔀</button> <button onclick="hostChips('+i+')">💰</button> <button onclick="hostKick('+i+')">🚪</button>';
+      ops='<button onclick="hostChips('+i+')">💰</button> <button onclick="hostKick('+i+')">🚪</button>';
+      if(canMove)mv=moveArrows(V,i,ang);
     }else if(V.phase==='hand'&&V.turn===i){
       ops='<button onclick="send({type:\'foldFor\',seat:'+i+'})">代行フォールド</button>';
     }
     h+='<div class="pl'+(V.turn===i?' turn':'')+(p.folded?' folded':'')+'" style="'+pos(1)+'">'
-      +'<div class="ops">'+ops+'</div>'
+      +'<div class="ops">'+ops+'</div>'+mv
       +'<div class="nm">'+posIcons(V,i)+esc(p.name)+' '+badges+'</div>'
       +'<div class="stack"><img class="chip20" src="assets/chip_white.png" alt="" onerror="this.style.display=\'none\'">'+yen(p.stack)+'</div>'
       +'<div class="bet">'+(p.bet>0?'ベット中: '+yen(p.bet):'')+'</div>'
@@ -1024,14 +1028,18 @@ function hostChips(seat){
   if(v==null)return;
   send({type:'addChips',seat:seat,amt:Math.floor(+v||0)});
 }
-/* 席の入れ替え：1人目の🔀 → 2人目の🔀 で2人の席を入れ替える（同じ🔀をもう一度でやめる） */
-var SWAP_SEL=-1;
-function hostSwap(seat){
-  var V=ST.view;
-  if(SWAP_SEL<0||!V.players[SWAP_SEL]){SWAP_SEL=seat;toast('🔀 '+V.players[seat].name+' さんと入れ替える人の 🔀 を押してください');renderTable(V);return;}
-  if(SWAP_SEL===seat){SWAP_SEL=-1;toast('入れ替えをやめました');renderTable(V);return;}
-  var a=SWAP_SEL;SWAP_SEL=-1;
-  send({type:'swap',a:a,b:seat});
+/* 席の移動（ゲームが始まる前だけ）：名前の横の矢印で、となりの人と席を入れ替える。
+   矢印の向き＝楕円の上でその人が動く向き（上下の席は◀▶、左右の席は▲▼）。ディーラーをまたいで回り込むことはしない */
+function moveArrows(V,i,ang){
+  var nb=function(d){for(var j=i+d;j>=0&&j<V.players.length;j+=d)if(!V.players[j].out)return j;return -1;};
+  var cw=nb(1),ccw=nb(-1),dx=-Math.sin(ang),dy=Math.cos(ang),hor=Math.abs(dx)>=Math.abs(dy);
+  var g=function(sx,sy){return hor?(sx*dx<0?'L':'R'):(sy*dy<0?'U':'D');};
+  var ic={L:'◀',R:'▶',U:'▲',D:'▼'},h='';
+  [[cw,g(1,1)],[ccw,g(-1,-1)]].forEach(function(x){
+    if(x[0]<0)return;
+    h+='<button class="mv mv'+x[1]+'" title="'+esc(V.players[x[0]].name)+' さんと席を入れ替える" onclick="send({type:\'swap\',a:'+i+',b:'+x[0]+'})">'+ic[x[1]]+'</button>';
+  });
+  return h;
 }
 /* 練習のあと、部屋を作り直さずに全員のチップとブラインドをそろえて本番へ */
 function hostReset(){
