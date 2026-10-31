@@ -21,6 +21,7 @@ function newTable(opts){
     showdown:null,                     /* {pots:[{amount,elig:[seat]}], allinRush:bool} */
     lastResult:null,                   /* 直前ハンドの結果表示用 */
     blind:null,                        /* ブラインド自動アップ {min,start,pausedAt,baseSb,baseBb}。null=固定 */
+    sb0:+opts.sb||50, bb0:+opts.bb||100, /* 作ったときのブラインド（本番スタートの初期値） */
     log:[]
   };
 }
@@ -45,6 +46,33 @@ function removePlayer(T,seat){
   if(T.phase!=='idle')return {error:'ハンド中は退席できません'};
   const p=T.players[seat]; if(!p)return {error:'no seat'};
   p.out=true; p.stack=0; log(T,'🚪 '+p.name+' が退席');
+  return {ok:true};
+}
+/* 席の入れ替え：アプリの席順を実際の座り方に合わせる。人（名前・チップ）が入れ替わり、ボタン（D）の位置はそのまま。
+   部屋サーバー側も、各スマホがどの席かを swap に合わせて付け替える。 */
+function swapSeats(T,a,b){
+  if(T.phase!=='idle')return {error:'ハンドの合間に行ってください'};
+  a=Math.floor(+a); b=Math.floor(+b);
+  if(!(a>=0&&b>=0&&a<T.players.length&&b<T.players.length)||a===b)return {error:'席を選び直してください'};
+  const t=T.players[a]; T.players[a]=T.players[b]; T.players[b]=t;
+  if(T.btnDraw){ const w=T.btnDraw.winner; T.btnDraw.winner=(w===a?b:w===b?a:w);
+    T.btnDraw.cards.forEach(c=>{ c.seat=(c.seat===a?b:c.seat===b?a:c.seat); }); }
+  log(T,'🔀 席を入れ替え：'+T.players[b].name+' ⇄ '+T.players[a].name);
+  return {ok:true, swap:[a,b]};
+}
+/* 本番スタート：練習のあと、同じ部屋のまま全員のチップとブラインドをそろえ直す。
+   退席した人（kick）は戻さない。練習で飛んだ人は戻る。ボタンは次にくじか自動で決める。 */
+function resetGame(T,a){
+  if(T.phase!=='idle')return {error:'ハンドの合間に行ってください'};
+  a=a||{};
+  const st=Math.floor(+a.stack||0), sb=Math.floor(+a.sb||0), bb=Math.floor(+a.bb||0);
+  if(!(st>0))return {error:'チップの数を入れてください'};
+  if(!(sb>0&&bb>=sb))return {error:'ブラインドの額を確かめてください（SB≦BB）'};
+  const seats=T.players.filter(p=>!p.out);
+  if(seats.length<2)return {error:'席にいる人が2人以上必要です'};
+  seats.forEach(p=>{ p.stack=st; p.bet=0; p.cont=0; p.folded=false; p.allin=false; p.acted=false; p.inHand=false; });
+  T.initStack=st; T.sb=sb; T.bb=bb; T.blind=null; T.btnDraw=null; T.lastResult=null; T.dealer=-1;
+  log(T,'🏁 本番スタート！ 全員のチップを '+st.toLocaleString()+' に（SB '+sb.toLocaleString()+' / BB '+bb.toLocaleString()+'）');
   return {ok:true};
 }
 
@@ -412,6 +440,8 @@ function applyAction(seat,a,isHost){
       case 'kick':     if(!isHost)return {error:'テーブル画面から操作してください'}; return removePlayer(ST,a.seat);
       case 'blind':    if(!isHost)return {error:'テーブル画面から操作してください'}; return blindCtl(ST,a,Date.now());
       case 'drawBtn':  if(!isHost)return {error:'テーブル画面から操作してください'}; return drawButton(ST);
+      case 'reset':    if(!isHost)return {error:'テーブル画面から操作してください'}; return resetGame(ST,a);
+      case 'swap':     if(!isHost)return {error:'テーブル画面から操作してください'}; return swapSeats(ST,a.a,a.b);
       case 'foldFor':  if(!isHost)return {error:'テーブル画面から操作してください'};
         if(ST.phase!=='hand'||ST.turn!==a.seat)return {error:'その人の番ではありません'};
         return act(ST,a.seat,{type:'fold'});
@@ -428,7 +458,7 @@ if(typeof module!=='undefined'&&module.exports){
   module.exports={
     newTable,addPlayer,addChips,removePlayer,startHand,act,toCall,buildPots,awardPots,
     score5,cmpScore,best7,handName,judgeShowdown,livePlayers,
-    blindCtl,blindInfo,blindLevel,BLIND_STEPS,drawButton,
+    blindCtl,blindInfo,blindLevel,BLIND_STEPS,drawButton,resetGame,swapSeats,
     getState,setState,createTable,serverStep,viewFor,applyAction,joinTable,RANK_JP
   };
 }

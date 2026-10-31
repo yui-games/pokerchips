@@ -75,6 +75,7 @@
   .pl.turn{border-color:var(--gold);box-shadow:0 0 16px rgba(232,198,106,.55);animation:turnGlow 1.3s ease-in-out infinite;}
   @keyframes turnGlow{50%{box-shadow:0 0 30px rgba(232,198,106,.95);}}
   .pl .bet{display:none;}
+  .dealerSpot{position:absolute;left:50%;top:9%;transform:translate(-50%,-50%);z-index:2;background:rgba(4,20,12,.7);border:2px dashed var(--gold);color:var(--gold);border-radius:14px;padding:6px 18px;font-size:17px;font-weight:bold;white-space:nowrap;}
   #felt .pl .ops{top:-15px;right:6px;}   /* 楕円では名前と重ならないよう、操作ボタンはカードの上のふちに乗せる */
   #felt .pl .ops button{padding:3px 10px;background:#24563c;}
   .betChip{position:absolute;transform:translate(-50%,-50%);z-index:2;background:rgba(0,0,0,.45);border-radius:99px;padding:3px 12px 3px 6px;font-size:18px;font-weight:900;color:var(--gold);white-space:nowrap;display:flex;align-items:center;}
@@ -115,7 +116,7 @@
   /* 画面が狭いとき（スマホでテーブル画面を開いた等）は、楕円をやめて今までのカード並びに戻す */
   @media (max-width:760px){
     #felt{height:auto;}
-    #felt::before,.betChip,#posBtns{display:none;}
+    #felt::before,.betChip,#posBtns,.dealerSpot{display:none;}
     #felt .pl .posIs{display:inline-flex;}   /* 狭い画面は卓の絵がないので、名前の横にD/SB/BBを出す */
     #feltCenter{position:static;transform:none;width:auto;}
     #plGrid{position:static;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-top:8px;}
@@ -854,6 +855,7 @@ function flashKind(t){
   if(e==='🙅')return {c:'small fold',s:'',img:'fold'};
   if(e==='💀')return {c:'small bust',s:'',m:rest.replace(/（.*$/,'')};
   if(e==='⏫')return {c:'raise',s:'levelup',img:'blindup'};
+  if(e==='🏁')return {c:'win',s:'levelup',m:'本番スタート！'};
   if(e==='▶'&&rest.indexOf('めくって')>=0)return {c:'small',s:'',m:rest.split('：')[0]};
   if(e==='🃏'&&rest.indexOf('ハンド#')===0)return {c:'small',s:'',m:rest.replace(/（.*$/,''),img:'newhand'};
   return null;
@@ -897,11 +899,12 @@ function renderTable(V){
   $('stTxt').innerHTML=st;
   /* プレイヤー */
   var h='',bets='';
-  /* 席の位置：0番の席を下の真ん中に置き、座った順に時計回り（画面の左回り）で楕円のふちに並べる */
+  /* 席の位置：画面の上のまん中＝カードを配るディーラーの場所（固定）。0番の席をディーラーの左どなり（画面の右上）に置き、
+     座った順に時計回り（上→右→下→左）で楕円のふちに並べる＝iPadの上側をディーラーに向けて置けば実際の卓と同じ並び */
   var N=V.players.length,seatPos={};
   V.players.forEach(function(p,i){
     if(p.out)return;
-    var ang=Math.PI/2+i*2*Math.PI/Math.max(N,2),cx=Math.cos(ang),cy=Math.sin(ang);
+    var ang=-Math.PI/2+(i+1)*2*Math.PI/(N+1),cx=Math.cos(ang),cy=Math.sin(ang);
     /* 左右の端の席が画面からはみ出さないよう、カードの半分の幅（--hw）だけ内側に寄せる */
     /* テーブルの絵は角の丸い長方形に近い形なので、楕円より四角寄りの曲線（指数2/3）でふちに沿わせる */
     var pos=function(f,da){var a=ang+(da||0),c=Math.cos(a),s=Math.sin(a);
@@ -914,8 +917,9 @@ function renderTable(V){
     if(p.folded)badges+='<span class="badge">フォールド</span>';
     if(!connectedOf(i))badges+='<span class="badge off">📶切断</span>';
     var ops='';
+    if(V.phase!=='idle')SWAP_SEL=-1;
     if(V.phase==='idle'){
-      ops='<button onclick="hostChips('+i+')">💰</button> <button onclick="hostKick('+i+')">🚪</button>';
+      ops='<button onclick="hostSwap('+i+')"'+(SWAP_SEL===i?' class="gold"':'')+' title="席を入れ替える">🔀</button> <button onclick="hostChips('+i+')">💰</button> <button onclick="hostKick('+i+')">🚪</button>';
     }else if(V.phase==='hand'&&V.turn===i){
       ops='<button onclick="send({type:\'foldFor\',seat:'+i+'})">代行フォールド</button>';
     }
@@ -926,7 +930,7 @@ function renderTable(V){
       +'<div class="bet">'+(p.bet>0?'ベット中: '+yen(p.bet):'')+'</div>'
       +'</div>';
   });
-  $('plGrid').innerHTML=h+bets;
+  $('plGrid').innerHTML='<div class="dealerSpot">🎩 ディーラー</div>'+h+bets;
   placePosBtns(V,seatPos);
   flashCheck(V);
   /* 結果表示 */
@@ -944,7 +948,8 @@ function renderTable(V){
     var nAlive=V.players.filter(function(p){return !p.out&&p.stack>0;}).length;
     c=btnDrawHTML(V)
       +'<button class="gold" style="font-size:20px;padding:16px 40px;" onclick="send({type:\'start\'})" '+(nAlive<2?'disabled':'')+'>▶ ハンド開始</button>'
-      +(nAlive>=2?'<div style="margin-top:8px"><button onclick="'+(V.btnDraw?'if(confirm(\'ボタン決めをやり直しますか？\'))':'')+'send({type:\'drawBtn\'})">🎴 ボタンをくじで決める</button></div>':'');
+      +(nAlive>=2?'<div style="margin-top:8px"><button onclick="'+(V.btnDraw?'if(confirm(\'ボタン決めをやり直しますか？\'))':'')+'send({type:\'drawBtn\'})">🎴 ボタンをくじで決める</button></div>':'')
+      +(V.handNo>0?'<div style="margin-top:8px"><button onclick="hostReset()">🏁 本番スタート（チップをそろえる）</button></div>':'');
   }
   if(V.phase==='showdown'){
     c=renderPots(V)+'<div style="display:flex;gap:10px;justify-content:center;margin-top:10px;">'
@@ -1018,6 +1023,30 @@ function hostChips(seat){
   var v=prompt(ST.view.players[seat].name+' に追加するチップ数（リバイ）',String(ST.view.initStack));
   if(v==null)return;
   send({type:'addChips',seat:seat,amt:Math.floor(+v||0)});
+}
+/* 席の入れ替え：1人目の🔀 → 2人目の🔀 で2人の席を入れ替える（同じ🔀をもう一度でやめる） */
+var SWAP_SEL=-1;
+function hostSwap(seat){
+  var V=ST.view;
+  if(SWAP_SEL<0||!V.players[SWAP_SEL]){SWAP_SEL=seat;toast('🔀 '+V.players[seat].name+' さんと入れ替える人の 🔀 を押してください');renderTable(V);return;}
+  if(SWAP_SEL===seat){SWAP_SEL=-1;toast('入れ替えをやめました');renderTable(V);return;}
+  var a=SWAP_SEL;SWAP_SEL=-1;
+  send({type:'swap',a:a,b:seat});
+}
+/* 練習のあと、部屋を作り直さずに全員のチップとブラインドをそろえて本番へ */
+function hostReset(){
+  var V=ST.view,n=V.players.filter(function(p){return !p.out;}).length;
+  var s=prompt('本番スタート：全員のチップをいくつにそろえますか？\n（今のチップは消えて、全員この数になります）',String(V.initStack));
+  if(s==null)return;
+  var hw=function(x){return String(x).replace(/[０-９／]/g,function(c){return String.fromCharCode(c.charCodeAt(0)-0xFEE0);});};
+  var st=Math.floor(+hw(s).replace(/[,，\s]/g,'')||0);
+  if(!(st>0)){toast('チップの数を入れてください');return;}
+  var b=prompt('ブラインドを「SB/BB」で入れてください（例 50/100）',(V.sb0||(V.blind?V.blind.baseSb:V.sb))+'/'+(V.bb0||(V.blind?V.blind.baseBb:V.bb)));
+  if(b==null)return;
+  var m=hw(b).replace(/[,，]/g,'').match(/(\d+)\D+(\d+)/);
+  if(!m||+m[1]<=0||+m[2]<+m[1]){toast('「50/100」のように入れてください（SB≦BB）');return;}
+  if(!confirm('本番スタートします。\n・席にいる '+n+' 人のチップを '+st.toLocaleString()+' にそろえる\n・ブラインド SB '+(+m[1]).toLocaleString()+' / BB '+(+m[2]).toLocaleString()+'（自動アップは止まります）\n・ボタンは次に決め直し\nよろしいですか？'))return;
+  send({type:'reset',stack:st,sb:+m[1],bb:+m[2]});
 }
 function hostKick(seat){
   if(confirm(ST.view.players[seat].name+' を退席させますか？'))send({type:'kick',seat:seat});
