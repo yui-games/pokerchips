@@ -232,12 +232,13 @@ function act(T,seat,move){
     }else{
       const full=(X>=T.currentBet+T.minRaise);
       if(!full&&X!==p.bet+p.stack)return {error:'最低レイズは '+(T.currentBet+T.minRaise).toLocaleString()+' です'};
-      const pay3=X-p.bet;
+      const pay3=X-p.bet, isBet=(T.currentBet===0);   /* まだ誰も賭けていない＝ベット（2026-11-01 レイズと分けた） */
       p.stack-=pay3; p.bet=X; p.acted=true;
       if(full)T.minRaise=X-T.currentBet;
       T.currentBet=X;
       T.players.forEach((q,qi)=>{ if(qi!==seat&&q.inHand&&!q.folded&&!q.allin)q.acted=false; });
-      if(p.stack===0){p.allin=true; log(T,'🔥 '+p.name+' レイズオールイン（'+X.toLocaleString()+'）');}
+      if(p.stack===0){p.allin=true; log(T,'🔥 '+p.name+(isBet?' ベットでオールイン（':' レイズオールイン（')+X.toLocaleString()+'）');}
+      else if(isBet) log(T,'🪙 '+p.name+' ベット → '+X.toLocaleString());
       else log(T,'📢 '+p.name+' レイズ → '+X.toLocaleString());
     }
   }

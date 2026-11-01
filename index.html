@@ -317,6 +317,9 @@
       <input id="inCodeD" placeholder="コード（4文字）" maxlength="4" style="text-transform:uppercase;">
       <button onclick="joinDealer()" style="flex:none;">ディーラーで入る</button>
     </div>
+    <div class="hint" style="margin-top:14px;border-top:1px dashed var(--line);padding-top:12px;">
+      🧮 実物のチップで遊ぶとき（計算だけ手伝う・この端末1台で）</div>
+    <button style="width:100%;margin-top:6px;" onclick="calcOpen()">チップ計算モードを開く</button>
     <div class="hint" style="margin-top:10px;">サーバー（ふつうは変えない)</div>
     <input id="inSrv" style="font-size:12px;padding:6px 8px;font-weight:normal;">
   </div>
@@ -415,7 +418,7 @@
         <li><b>誰の番か分からない</b>：この画面の「いまの番」と、テーブル画面の光っている枠を見る。</li>
         <li><b>離席・電池切れ</b>：テーブル画面の「代行フォールド」で降ろせます。復帰は同じスマホで開き直せばOK。</li>
         <li><b>チップが足りない人</b>：テーブル画面の「💰リバイ」で足せます（持ち点＝ゲーム内ポイント。現金・物との交換はしない）。</li>
-        <li><b>用語</b>：チェック＝賭けずにパス／コール＝同額を出す／レイズ＝上乗せ／フォールド＝降りる／オールイン＝全部賭ける。</li>
+        <li><b>用語</b>：チェック＝賭けずにパス／ベット＝そのラウンドで最初に賭ける（最低BB）／コール＝同額を出す／レイズ＝上乗せ（直前の上乗せ分以上）／フォールド＝降りる／オールイン＝全部賭ける。</li>
       </ul>
     </details>
   </div>
@@ -501,6 +504,34 @@
   <div id="eqRes"></div>
   <div class="hint" style="margin-top:8px;">スロットの順に埋まります。入れたカードをもう一度タップすると外せます。</div>
   <div id="eqGrid"></div>
+</div></div>
+
+<!-- 🧮 実物チップ用の計算（2026-11-01）：部屋もサーバーも使わず、この端末1台で計算だけ手伝う -->
+<div class="modal" id="mCalc"><div class="mbox" style="max-width:560px;">
+  <div style="display:flex;align-items:center;gap:8px;">
+    <b style="font-size:18px;color:var(--gold);">🧮 チップ計算（実物のチップ用）</b><span style="flex:1"></span>
+    <button class="ghost" style="padding:8px 12px;font-size:14px;" onclick="closeM('mCalc')">閉じる</button>
+  </div>
+  <div class="hint" style="margin-top:4px;">チップは実物で動かし、計算だけをこの画面で。部屋やQRは使いません（この端末だけ）。</div>
+
+  <h3 style="color:var(--gold);margin:14px 0 6px;">① 最低いくら出せばいい？</h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+    <div><label class="hint">BB</label><input id="cBb" type="number" inputmode="numeric" value="100" oninput="calcMin()"></div>
+    <div><label class="hint">いまの最高ベット</label><input id="cCur" type="number" inputmode="numeric" value="0" oninput="calcMin()"></div>
+    <div><label class="hint">その1つ前のベット</label><input id="cPrev" type="number" inputmode="numeric" value="0" oninput="calcMin()"></div>
+  </div>
+  <div class="hint" style="margin-top:4px;">ベットは「このラウンドで、その人が出している合計」で入れる。プリフロップは いまの最高＝BB、1つ前＝0。</div>
+  <div id="cMinRes" class="potRow" style="font-size:16px;"></div>
+
+  <h3 style="color:var(--gold);margin:16px 0 6px;">② サイドポットの計算（オールインが出たとき）</h3>
+  <div class="hint">このハンドで<b>出したチップの合計</b>（全ラウンド分）を入れる。降りた人も出した分は入れて「降りた」に✓。</div>
+  <div id="cRows"></div>
+  <div style="display:flex;gap:8px;margin-top:8px;">
+    <button class="ghost" style="flex:1;padding:8px;font-size:14px;" onclick="calcAddRow()">＋ 人を追加</button>
+    <button class="ghost" style="flex:1;padding:8px;font-size:14px;" onclick="calcClear()">金額をクリア</button>
+  </div>
+  <div id="cPots"></div>
+  <div id="cGet"></div>
 </div></div>
 
 <div id="toast"></div>
@@ -852,6 +883,7 @@ function flashKind(t){
   var e=Array.from(t)[0],rest=t.slice(e.length).trim();
   if(e==='🏆')return {c:'win',s:'win',img:'win'};
   if(e==='📢')return {c:'raise',s:'raise',img:'raise'};
+  if(e==='🪙')return {c:'raise',s:'raise',img:'bet'};   /* ベット（そのストリートで最初に賭ける）2026-11-01 */
   if(e==='🔥')return {c:'allin',s:'allin',img:'allin'};
   if(e==='📞')return {c:'small',s:'call',img:'call'};
   if(e==='✋')return {c:'small',s:'check',img:'check'};
@@ -864,8 +896,8 @@ function flashKind(t){
   return null;
 }
 /* 文字画像は先に読み込んでおく（表示した瞬間に出るように）。失敗したものは使わない */
-var FX_OK={},FX_V='5';   /* 画像を差し替えたら数字を上げる（古い画像が残らないように） */
-['raise','call','check','fold','allin','win','showdown','blindup','newhand'].forEach(function(k){
+var FX_OK={},FX_V='6';   /* 画像を差し替えたら数字を上げる（古い画像が残らないように） */
+['raise','bet','call','check','fold','allin','win','showdown','blindup','newhand'].forEach(function(k){
   var im=new Image();im.onload=function(){FX_OK[k]=true;};im.src='assets/fx_'+k+'.webp?v='+FX_V;
 });
 function flashCheck(V){
@@ -996,9 +1028,16 @@ function renderPots(V){
   var pots=V.showdown.pots;
   if(potSel.length!==pots.length)potSel=pots.map(function(){return [];});
   var h='';
+  /* サイドポットがあるときの手順（2026-11-01 オフ会で迷ったため）：強い人をタップすると、その人が取れる残りのポットにも自動で入る */
+  if(pots.length>1)h+='<div class="hint" style="background:rgba(0,0,0,.3);border-radius:10px;padding:8px 12px;line-height:1.7;">'
+    +'<b>サイドポットの分け方</b>：① 残った人の中で<b>いちばん強い人</b>をメインポットでタップ（その人が取れるポットは全部自動で入ります）'
+    +'<br>② まだ空いているポットだけ、<b>そのポットの対象の中で</b>いちばん強い人をタップ　※迷ったら「🃏 カードで判定」なら全部自動</div>';
+  var live=V.players.map(function(p,i){return i;}).filter(function(i){return V.players[i].inHand&&!V.players[i].folded;});
   pots.forEach(function(pot,i){
+    var outN=live.filter(function(s){return pot.elig.indexOf(s)<0;}).map(function(s){return esc(V.players[s].name);});
     h+='<div class="potRow"><span class="amt">'+(pots.length>1?(i===0?'メインポット':'サイドポット'+i):'ポット')+'：'+yen(pot.amount)+'</span>'
-      +'<span class="hint">　勝った人をタップ（チョップは複数選択）</span><div class="cands">';
+      +'<span class="hint">　勝った人をタップ（チョップは複数選択）</span>'
+      +(outN.length?'<div class="hint">取れない人：'+outN.join('・')+'（オールインの額が少ないため）</div>':'')+'<div class="cands">';
     pot.elig.forEach(function(s){
       h+='<button data-pot="'+i+'" data-seat="'+s+'" onclick="togglePotSel('+i+','+s+',this)">'+esc(V.players[s].name)+'</button>';
     });
@@ -1015,13 +1054,97 @@ function restorePotSel(V){
 function togglePotSel(pi,s,el){
   var a=potSel[pi]||[];
   var ix=a.indexOf(s);
-  if(ix>=0)a.splice(ix,1);else a.push(s);
-  potSel[pi]=a;el.classList.toggle('sel');
+  if(ix>=0)a.splice(ix,1);
+  else{
+    a.push(s);
+    /* 選んだ人が対象になっている、後ろの空いているポットにも自動で入れる */
+    var pots=ST.view&&ST.view.showdown?ST.view.showdown.pots:[];
+    for(var j=pi+1;j<pots.length;j++)if(potSel[j]&&!potSel[j].length&&pots[j].elig.indexOf(s)>=0)potSel[j]=[s];
+  }
+  potSel[pi]=a;restorePotSel(ST.view);
 }
 function confirmAward(){
   for(var i=0;i<potSel.length;i++)if(!potSel[i].length){toast('勝者が選ばれていないポットがあります');return;}
   send({type:'award',winners:potSel});
   potSel=[];
+}
+
+/* ---------- 🧮 実物チップ用の計算（サーバーを使わない・この端末だけ） ---------- */
+var CALC={rows:[],sel:[]};
+function calcOpen(){
+  if(!CALC.rows.length)CALC.rows=[1,2,3,4].map(function(k){return {name:'P'+k,amt:'',fold:false};});
+  calcRows();calcMin();openM('mCalc');
+}
+/* 最低ベット＝BB。最低レイズ＝いまの最高ベット＋直前の上乗せ額（ただしBB以上） */
+function calcMin(){
+  var bb=Math.max(0,Math.floor(+$('cBb').value||0)),cur=Math.max(0,Math.floor(+$('cCur').value||0)),prev=Math.max(0,Math.floor(+$('cPrev').value||0));
+  var h;
+  if(cur<=0)h='まだ誰も賭けていない → <b>ベットは最低 '+yen(bb)+'</b>（BBと同じ）';
+  else{
+    var up=Math.max(cur-prev,bb);
+    h='コールは <b>'+yen(cur)+'</b> にそろえる／<b>レイズは合計 '+yen(cur+up)+' 以上</b>'
+      +'<div class="hint">（直前の上乗せ '+yen(up)+' と同じ分以上を、さらに上乗せ。足りないオールインはOK）</div>';
+  }
+  $('cMinRes').innerHTML=h;
+}
+function calcRows(){
+  $('cRows').innerHTML=CALC.rows.map(function(r,i){
+    return '<div style="display:grid;grid-template-columns:1fr 1.2fr auto auto;gap:6px;align-items:center;margin-top:6px;">'
+      +'<input value="'+esc(r.name)+'" maxlength="10" oninput="CALC.rows['+i+'].name=this.value;calcPots()">'
+      +'<input type="number" inputmode="numeric" placeholder="出した合計" value="'+esc(String(r.amt))+'" oninput="CALC.rows['+i+'].amt=this.value;CALC.sel=[];calcPots()">'
+      +'<label class="hint" style="white-space:nowrap;"><input type="checkbox" style="width:auto;" '+(r.fold?'checked ':'')+'onchange="CALC.rows['+i+'].fold=this.checked;CALC.sel=[];calcPots()">降りた</label>'
+      +'<button class="ghost" style="padding:6px 10px;font-size:14px;" onclick="CALC.rows.splice('+i+',1);CALC.sel=[];calcRows()">✕</button></div>';
+  }).join('');
+  calcPots();
+}
+function calcAddRow(){if(CALC.rows.length>=10)return;CALC.rows.push({name:'P'+(CALC.rows.length+1),amt:'',fold:false});calcRows();}
+function calcClear(){CALC.rows.forEach(function(r){r.amt='';r.fold=false;});CALC.sel=[];calcRows();}
+/* poker_core.js の buildPots と同じ考え方：出した額の段ごとにポットを切る */
+function calcBuild(){
+  var P=CALC.rows.map(function(r){return {c:Math.max(0,Math.floor(+r.amt||0)),f:r.fold};});
+  var lv=[];P.forEach(function(p){if(p.c>0&&lv.indexOf(p.c)<0)lv.push(p.c);});lv.sort(function(a,b){return a-b;});
+  var pots=[],prev=0;
+  lv.forEach(function(L){
+    var amt=0;P.forEach(function(p){amt+=Math.max(0,Math.min(p.c,L)-prev);});
+    var el=[];P.forEach(function(p,i){if(!p.f&&p.c>=L)el.push(i);});
+    if(amt>0){var last=pots[pots.length-1];
+      if(last&&last.elig.join()===el.join())last.amount+=amt;
+      else if(!el.length&&last)last.amount+=amt;   /* 降りた人だけが出した上の段は、1つ下のポットに入れる */
+      else pots.push({amount:amt,elig:el});}
+    prev=L;
+  });
+  return pots;
+}
+function calcPots(){
+  var pots=calcBuild();
+  if(CALC.sel.length!==pots.length)CALC.sel=pots.map(function(){return [];});
+  var nm=function(i){return esc(CALC.rows[i].name||('P'+(i+1)));};
+  var h='';
+  if(!pots.length){$('cPots').innerHTML='';$('cGet').innerHTML='';return;}
+  if(pots.length>1)h+='<div class="hint" style="margin-top:10px;line-height:1.7;">① いちばん強い人をメインポットでタップ（取れるポットは自動で入る）② 空いたポットだけ、その対象の中でいちばん強い人をタップ</div>';
+  pots.forEach(function(pot,i){
+    h+='<div class="potRow"><span class="amt">'+(pots.length>1?(i===0?'メインポット':'サイドポット'+i):'ポット')+'：'+yen(pot.amount)+'</span>'
+      +'<div class="hint">対象：'+(pot.elig.length?pot.elig.map(nm).join('・'):'（なし）')+'</div><div class="cands">';
+    pot.elig.forEach(function(s){
+      h+='<button class="'+(CALC.sel[i].indexOf(s)>=0?'sel':'')+'" onclick="calcPick('+i+','+s+')">'+nm(s)+'</button>';
+    });
+    h+='</div></div>';
+  });
+  $('cPots').innerHTML=h;
+  /* 受け取る額（チョップで割り切れない端数は、先に選んだ人に1枚ずつ） */
+  var get={},ok=true;
+  pots.forEach(function(pot,i){var ws=CALC.sel[i];if(!ws.length){ok=false;return;}
+    var sh=Math.floor(pot.amount/ws.length),rem=pot.amount-sh*ws.length;
+    ws.forEach(function(w){get[w]=(get[w]||0)+sh+(rem>0?1:0);if(rem>0)rem--;});});
+  $('cGet').innerHTML=ok?'<div class="potRow" style="border-color:var(--gold);"><b>受け取る額</b><br>'
+    +Object.keys(get).map(function(w){return nm(+w)+'：<b>'+yen(get[w])+'</b>';}).join('<br>')+'</div>'
+    :'<div class="hint" style="margin-top:8px;">すべてのポットで勝った人をタップすると、受け取る額が出ます。</div>';
+}
+function calcPick(pi,s){
+  var a=CALC.sel[pi],ix=a.indexOf(s),pots=calcBuild();
+  if(ix>=0)a.splice(ix,1);
+  else{a.push(s);for(var j=pi+1;j<pots.length;j++)if(!CALC.sel[j].length&&pots[j].elig.indexOf(s)>=0)CALC.sel[j]=[s];}
+  calcPots();
 }
 function hostChips(seat){
   var v=prompt(ST.view.players[seat].name+' に追加するチップ数（リバイ）',String(ST.view.initStack));
@@ -1176,7 +1299,7 @@ function placePosBtns(V,seatPos){
 }
 
 /* ---------- スマホ描画 ---------- */
-var PH_LOCK={until:0,ms:1500,t:0,name:''};
+var PH_LOCK={until:0,ms:1500,msStreet:4000,t:0,name:''};
 var STREET_JP=['プリフロップ','フロップ','ターン','リバー'];
 function renderPhone(V){
   if(ST.you<0)return;
@@ -1196,9 +1319,11 @@ function renderPhone(V){
      前の段階で連打した指が、次の段階のボタンをそのまま押してしまう誤操作を防ぐ。音もこの間は鳴らさず、解けてから鳴らす */
   var stKey=V.handNo+'-'+V.street,now=Date.now();
   if(V.phase==='hand'&&renderPhone._st&&renderPhone._st!==stKey){
-    PH_LOCK.until=now+PH_LOCK.ms;PH_LOCK.name=STREET_JP[V.street]||'次の段階';
+    /* フロップ・ターン・リバーは、ディーラーが場のカードをめくり終える前にチェックしてしまうことがあったので長めに（2026-11-01 1.5秒→4秒） */
+    var lockMs=V.street>0?PH_LOCK.msStreet:PH_LOCK.ms;
+    PH_LOCK.until=now+lockMs;PH_LOCK.name=STREET_JP[V.street]||'次の段階';
     closeM('mRaise');
-    clearTimeout(PH_LOCK.t);PH_LOCK.t=setTimeout(function(){if(ST.view)render();},PH_LOCK.ms+30);
+    clearTimeout(PH_LOCK.t);PH_LOCK.t=setTimeout(function(){if(ST.view)render();},lockMs+30);
   }
   renderPhone._st=stKey;
   var locked=V.phase==='hand'&&now<PH_LOCK.until;
@@ -1219,14 +1344,16 @@ function renderPhone(V){
   if(!myTurn)renderPhone._v=false;
   var h='';
   if(locked&&myTurn){
-    h='<div class="hint" style="grid-column:1/-1;text-align:center;padding:14px 0;">少し待ってね…（押しまちがい防止）</div>';
+    h='<div class="hint" style="grid-column:1/-1;text-align:center;padding:14px 0;">'+(V.street>0?'場のカードがめくられるのを待ってね…':'少し待ってね…（押しまちがい防止）')+'</div>';
   }else if(myTurn){
     var tc=V.toCall||0;
     if(tc<=0)h+='<button class="gold" onclick="send({type:\'check\'})">✋ チェック</button>';
     else h+='<button class="gold" onclick="send({type:\'call\'})">📞 コール '+yen(tc)+'</button>';
     /* このストリートでまだ誰も賭けていなければ「ベット」、賭けがあれば「レイズ」 */
     h+='<button onclick="openRaise()">'+(V.currentBet>0?'📢 レイズ':'💰 ベット')+'</button>';
-    h+='<button class="red" onclick="if(confirm(\'フォールドしますか？\'))send({type:\'fold\'})">🙅 フォールド</button>';
+    /* チェックできるのにフォールドを押したら、もう一度確かめる（慣れていない人がうっかり降りてしまうため・2026-11-01） */
+    var fq=tc<=0?'チェックできますが、よろしいですか？\\n（チェック＝チップを出さずに、降りずに次へ進めます）\\n\\nOK＝フォールドする（降りる）':'フォールドしますか？';
+    h+='<button class="red" onclick="if(confirm(\''+fq+'\'))send({type:\'fold\'})">🙅 フォールド</button>';
     h+='<button class="red" onclick="if(confirm(\'オールイン！本当に？\'))send({type:\'allin\'})">🔥 オールイン</button>';
   }
   $('pBtns').innerHTML=h;
